@@ -61,8 +61,8 @@ used to open a browser to the Web Interface.  **Everything** can be configured t
 </p> -->
 
 ## Contributors
-David Viberg -- Principal Engineer for board layout and initial software development
-Chuck Rohs -- Chief S/W polisher
+* David Viberg -- Principal Engineer for board layout and initial software development
+* Chuck Rohs -- Chief S/W polisher
 
 /* The MIT License (MIT)
 
