@@ -1,5 +1,5 @@
 /** The MIT License (MIT)
-Copyright (c) 2018 David Payne 
+Copyright (c) 2018 David Payne
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
@@ -20,7 +20,7 @@ SOFTWARE.
 */
 /* Additional Contributions:
 
-/* 
+/*
  20200920 - Chuck Rohs.
     Based on code initially developed by Dave Viberg, derived from printermonitor
     Removed all extraneous code.
@@ -29,29 +29,29 @@ SOFTWARE.
  */
 
 /* VOC Notes:
- voc sensor gives error on read for 15sec while initializing, if no previous baseline take 12 hours to stabilize for saving 
+ voc sensor gives error on read for 15sec while initializing, if no previous baseline take 12 hours to stabilize for saving
  routines- i2c read and write, init air quality, probe and features, start measurment, measure iaq,
  routines- read ready flag, get/set baseline, TVOC CO2eq, temp humidity
  ** use arduino eeprom for saving baseline, esp8266 version implements in flash **
 
  temp sensor resets on power on, get temp and humidity poll on data ready (15msec) then read and to feed voc sensor
- write 0xE0, 0x78, 0x66 to set temperature sensor to read temp first (svm30 datasheet page 11), 
+ write 0xE0, 0x78, 0x66 to set temperature sensor to read temp first (svm30 datasheet page 11),
  write 0xE0, 0x5c, 0x24, read 0xe1 until success, read 0xe1 and 4 bytes data with 2 crc's, save in ram, calc to display
 
- init voc 0x2003, set humidity 0x2061, set baseline 0x201e, measure air quality 0x2008 every sec to keep base line updated 
+ init voc 0x2003, set humidity 0x2061, set baseline 0x201e, measure air quality 0x2008 every sec to keep base line updated
  baseline should be saved every 10 min or so, so as not to wear out flash, 4 bytes data and 2 bytes crc
  measure air quality returns 2 byte CO2eq (ppm) and 2 byte TVOC (ppb)
  */
- 
+
  /***********************************************
  * Edit Settings.h for personalization
  ***********************************************/
 #include "Settings.h"
-#include <EEPROM.h>  
+#include <EEPROM.h>
 
 #define VERSION "2.5"
 
-#define HOSTNAME "AirQual-" 
+#define HOSTNAME "AirQual-"
 #define CONFIG "/conf.txt"
 
 /* Useful Constants */
@@ -59,8 +59,8 @@ SOFTWARE.
 #define SECS_PER_HOUR (3600UL)
 
 /* Useful Macros for getting elapsed time */
-#define numberOfSeconds(_time_) (_time_ % SECS_PER_MIN)  
-#define numberOfMinutes(_time_) ((_time_ / SECS_PER_MIN) % SECS_PER_MIN) 
+#define numberOfSeconds(_time_) (_time_ % SECS_PER_MIN)
+#define numberOfMinutes(_time_) ((_time_ / SECS_PER_MIN) % SECS_PER_MIN)
 #define numberOfHours(_time_) (_time_ / SECS_PER_HOUR)
 
 // Initialize the oled display for I2C_DISPLAY_ADDRESS
@@ -79,21 +79,23 @@ void drawScreen1(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int
 void drawScreen2(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void drawScreen3(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void drawHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state);
-void drawClock(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
+void drawTinyAQ(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
+void drawPM05(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
+void drawPM10(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
+void drawPM25(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
+void drawPM40(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
+void drawPM100(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void drawWeather(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
-void drawClockHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state);
 
 // Set the number of Frames supported
-const int numberOfFrames = 3;
+const int numberOfFrames = 7; /* weather, rh/temp, 5x aqi */
 FrameCallback frames[numberOfFrames];
-FrameCallback clockFrame[2];
 boolean isClockOn = false;
 
 OverlayCallback overlays[] = { drawHeaderOverlay };
-OverlayCallback clockOverlay[] = { drawClockHeaderOverlay };
 int numberOfOverlays = 1;
 
-// Time 
+// Time
 TimeClient timeClient(UtcOffset);
 long lastEpoch = 0;
 long firstEpoch = 0;
@@ -117,13 +119,13 @@ String WEB_ACTIONS =  "<a class='w3-bar-item w3-button' href='/'><i class='fa fa
                       "<a class='w3-bar-item w3-button' href='/forgetwifi' onclick='return confirm(\"Do you want to forget to WiFi connection?\")'><i class='fa fa-wifi'></i> Forget WiFi</a>"
                       "<a class='w3-bar-item w3-button' href='/update'><i class='fa fa-wrench'></i> Firmware Update</a>"
                       "<a class='w3-bar-item w3-button' href='https://github.com/rochuck' target='_blank'><i class='fa fa-question-circle'></i> About</a>";
-                            
+
 String CHANGE_FORM =  "<form class='w3-container' action='/updateconfig' method='get'><h2>Configuration:</h2>"
                       "<p><input name='isClockEnabled' class='w3-check w3-margin-top' type='checkbox' %IS_CLOCK_CHECKED%> Display Clock</p>"
                       "<p><input name='is24hour' class='w3-check w3-margin-top' type='checkbox' %IS_24HOUR_CHECKED%> Use 24 Hour Clock (military time)</p>"
                       "<p><input name='invDisp' class='w3-check w3-margin-top' type='checkbox' %IS_INVDISP_CHECKED%> Flip display orientation</p>"
                       "<p>Clock Sync / Weather Refresh (minutes) <select class='w3-option w3-padding' name='refresh'>%OPTIONS%</select></p>";
-                      
+
 String THEME_FORM =   "<p>Theme Color <select class='w3-option w3-padding' name='theme'>%THEME_OPTIONS%</select></p>"
                       "<p><label>UTC Time Offset</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='utcoffset' value='%UTCOFFSET%' maxlength='12'></p><hr>"
                       "<p><input name='isBasicAuth' class='w3-check w3-margin-top' type='checkbox' %IS_BASICAUTH_CHECKED%> Use Security Credentials for Configuration Changes</p>"
@@ -257,12 +259,15 @@ void setup() {
     ui.setFrameAnimation(SLIDE_LEFT);
     ui.setTargetFPS(30);
     ui.disableAllIndicators();
-    ui.setFrames(clockFrame, 2);
-    frames[0]     = drawScreen1;
-    frames[1]     = drawScreen2;
-    frames[2]     = drawScreen3;
-    clockFrame[0] = drawClock;
-    clockFrame[1] = drawWeather;
+    ui.setFrames(frames, 7);
+    frames[0] = drawWeather;
+    frames[1] = drawTinyAQ;
+    frames[2] = drawPM05;
+    frames[3] = drawPM10;
+    frames[4] = drawPM25;
+    frames[5] = drawPM40;
+    frames[6] = drawPM100;
+
     ui.setOverlays(overlays, numberOfOverlays);
 
     // Inital UI takes care of initalising the display too.
@@ -545,7 +550,7 @@ void starttemprh(void){ // starts sensirion SVM30 temperature measurements
   Wire.beginTransmission(0x70);       // transmit to device 0x70, R + RH
   Wire.write(byte(0x78));             // sends command to start measurement (read temp first)
   Wire.write(byte(0x66));             // sends command to start measurement
-  data[0]=0x78;data[1]=0x66;  
+  data[0]=0x78;data[1]=0x66;
   reslt=CalcCrc(data);
   Wire.write(byte(reslt));            // sends chk
   Wire.endTransmission();             // stop transmitting
@@ -554,14 +559,14 @@ void starttemprh(void){ // starts sensirion SVM30 temperature measurements
 void readtemprh(void){ // read sensirion SVM30 temperature and humidity measurements
   // dv for temp and RH, after 15msec, read and 4 bytes data with 2 crc's, save in ram, calc to display
   Wire.requestFrom(0x70, 6);          // request data bytes from slave device 0x70
-  if (6 <= Wire.available()) {        
+  if (6 <= Wire.available()) {
     for(tmp=0;tmp<6;tmp++) {
       data[tmp] = Wire.read();        // receive data
     }
   }
   for(tmp=0;tmp<2;tmp++){                // for 2 crc protected data pairs (6bytes)
     for(reslt=0;reslt<3;reslt++){        // read 2 bytes data and crc
-      flt[reslt]=data[(tmp*3)+reslt];    
+      flt[reslt]=data[(tmp*3)+reslt];
     }
     if(CalcCrc(flt)==flt[2]) chk[tmp]=1; // crc pass
     else chk[tmp]=0;                     // crc fail
@@ -593,7 +598,7 @@ void iicWr2byteandcrc(uint8_t addr, uint8_t hibyte, uint8_t lobyte) {
   Wire.setClock(100000L);             // all Sensirion devices use iic ant 100KHz max!
   Wire.beginTransmission(addr);       // transmit to device 0x58, VOC detector
   Wire.write(byte(hibyte));             // sends command byte
-  Wire.write(byte(lobyte));             // sends dummy byte  
+  Wire.write(byte(lobyte));             // sends dummy byte
   data[0]=hibyte;data[1]=lobyte;
   reslt=CalcCrc(data);
   Wire.write(byte(reslt));            // sends chk
@@ -601,11 +606,11 @@ void iicWr2byteandcrc(uint8_t addr, uint8_t hibyte, uint8_t lobyte) {
 }
 
 uint8_t iicRdVOC(uint8_t addr, uint8_t numbytes) {// data is returned in global data[] return of 1 means fail
-  Wire.requestFrom(addr, numbytes);               // request numbytes from slave device 
+  Wire.requestFrom(addr, numbytes);               // request numbytes from slave device
   for(tmp=0;tmp<numbytes;tmp++){
     data[tmp]=Wire.read();
-  } 
-  // need to crc check rx'd byte pairs, 20 readings of 2 bytes plus crc byte, compute and build crc chk array      
+  }
+  // need to crc check rx'd byte pairs, 20 readings of 2 bytes plus crc byte, compute and build crc chk array
   for(tmp=0;tmp<(numbytes/3);tmp++){     // for numbytes crc protected data pairs
     for(reslt=0;reslt<3;reslt++){        // read 2 bytes data and crc
       flt[reslt]=data[(tmp*3)+reslt];    // flt[] used as temp storage
@@ -624,7 +629,7 @@ uint8_t iicRdVOC(uint8_t addr, uint8_t numbytes) {// data is returned in global 
 }
 
 void setbaseline(void) {// uses data from global array flt[]
-  Wire.setClock(100000L);               // all Sensrion devices use iic ant 100KHz max!  
+  Wire.setClock(100000L);               // all Sensrion devices use iic ant 100KHz max!
   Wire.beginTransmission(0x58);         // transmit set baseline to device 0x58, VOC detector
   Wire.write(byte(0x20));               // sends command to set baseline
   Wire.write(byte(0x1e));               // sends command to set baseline
@@ -677,7 +682,7 @@ void getUpdateTime() {
 boolean authentication() {
   if (IS_BASIC_AUTH && (strlen(www_username) >= 1 && strlen(www_password) >= 1)) {
     return server.authenticate(www_username, www_password);
-  } 
+  }
   return true; // Authentication not required
 }
 
@@ -724,7 +729,7 @@ void handleUpdateConfig() {
     writeSettings();
     if (INVERT_DISPLAY != flipOld) {
     ui.init();
-    if(INVERT_DISPLAY)     
+    if(INVERT_DISPLAY)
       display.flipScreenVertically();
     ui.update();
   }
@@ -969,9 +974,9 @@ void display_air_quality() {
     html += "</tr><tr>";
     html += "<td>PM<sub>1.0</sub></td><td>" + String(m.nc_1p0 - m.nc_0p5) + "</td><td>" +  String(m.mc_1p0) + "</td>";
     html += "</tr><tr>";
-    html += "<td>PM<sub>2.5</sub></td><td>" + String(m.nc_2p5 - m.nc_1p0) + "</td><td>" +  String(m.mc_2p5 - m.mc_1p0) + "</td>"; 
+    html += "<td>PM<sub>2.5</sub></td><td>" + String(m.nc_2p5 - m.nc_1p0) + "</td><td>" +  String(m.mc_2p5 - m.mc_1p0) + "</td>";
     html += "</tr><tr>";
-    html += "<td>PM<sub>4.0</sub></td><td>" + String(m.nc_4p0 - m.nc_2p5) + "</td><td>" +  String(m.mc_4p0 - m.mc_2p5) + "</td>"; 
+    html += "<td>PM<sub>4.0</sub></td><td>" + String(m.nc_4p0 - m.nc_2p5) + "</td><td>" +  String(m.mc_4p0 - m.mc_2p5) + "</td>";
     html += "</tr><tr>";
     html += "<td>PM<sub>10</sub></td><td>" + String(m.nc_10p0 - m.nc_4p0) + "</td><td>" +  String(m.mc_10p0 - m.mc_4p0) + "</td>";
     html += "</tr></table>";
@@ -1048,7 +1053,7 @@ void configModeCallback (WiFiManager *myWiFiManager) {
   display.setFont(ArialMT_Plain_10);
   display.drawString(64, 42, "To setup Wifi connection");
   display.display();
-  
+
   Serial.println("Wifi Manager");
   Serial.println("Please connect to AP");
   Serial.println(myWiFiManager->getConfigPortalSSID());
@@ -1104,7 +1109,7 @@ void drawScreen3(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int
   display->drawString(64 + x, 14 + y, time);
 }
 
-void drawClock(OLEDDisplay*        display,
+void drawTinyAQ(OLEDDisplay*        display,
                OLEDDisplayUiState* state,
                int16_t             x,
                int16_t             y) {
@@ -1137,6 +1142,79 @@ void drawClock(OLEDDisplay*        display,
       display->setFont(ArialMT_Plain_24);
       display->drawString(64 + x, 17 + y, displayTime);
     */
+}
+
+void drawPM(OLEDDisplay*        display,
+              OLEDDisplayUiState* state,
+              int16_t             x,
+              int16_t             y,
+              String              pm,
+              String              count,
+              String              ug) {
+    display->setTextAlignment(TEXT_ALIGN_LEFT);
+    display->setFont(ArialMT_Plain_24);
+    display->drawString(x + 0, 0, "PM");
+    display->drawString(x + 0, 20, pm);
+    display->setFont(ArialMT_Plain_16);
+    display->drawString(x + 45, 0, "#");
+    display->drawString(x + 45, 20, "ug");
+    display->drawString(x + 75, 0, count);
+    display->drawString(x + 75, 20, ug);
+}
+
+void drawPM05(OLEDDisplay*        display,
+              OLEDDisplayUiState* state,
+              int16_t             x,
+              int16_t             y) {
+    drawPM(display, state, x, y, "0.5", String(m.nc_0p5), String("--"));
+}
+void drawPM10(OLEDDisplay*        display,
+              OLEDDisplayUiState* state,
+              int16_t             x,
+              int16_t             y) {
+    drawPM(display,
+           state,
+           x,
+           y,
+           "1.0",
+           String(m.nc_1p0 - m.nc_0p5),
+           String(m.mc_1p0));
+}
+void drawPM25(OLEDDisplay*        display,
+              OLEDDisplayUiState* state,
+              int16_t             x,
+              int16_t             y) {
+    drawPM(display,
+           state,
+           x,
+           y,
+           "2.5",
+           String(m.nc_2p5 - m.nc_1p0),
+           String(m.mc_2p5 - m.mc_1p0));
+}
+void drawPM40(OLEDDisplay*        display,
+              OLEDDisplayUiState* state,
+              int16_t             x,
+              int16_t             y) {
+    drawPM(display,
+           state,
+           x,
+           y,
+           "4.0",
+           String(m.nc_4p0 - m.nc_2p5),
+           String(m.mc_4p0 - m.mc_2p5));
+}
+void drawPM100(OLEDDisplay*        display,
+               OLEDDisplayUiState* state,
+               int16_t             x,
+               int16_t             y) {
+    drawPM(display,
+           state,
+           x,
+           y,
+           "10",
+           String(m.nc_10p0 - m.nc_4p0),
+           String(m.mc_10p0 - m.mc_4p0));
 }
 
 void drawWeather(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
@@ -1194,7 +1272,7 @@ void drawHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state) {
   }
   display->setTextAlignment(TEXT_ALIGN_LEFT);
   display->drawString(0, 48, displayTime);
-  
+
   if (!IS_24HOUR) {
     String ampm = timeClient.getAmPm();
     display->setFont(ArialMT_Plain_10);
@@ -1205,33 +1283,17 @@ void drawHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state) {
   display->setTextAlignment(TEXT_ALIGN_LEFT);
   String percent = String(50) + "%";
   display->drawString(64, 48, percent);
-  
+
   // Draw indicator to show next update
   int updatePos = (50.0 / float(100)) * 128;
-  display->drawRect(0, 41, 128, 6);
+  display->drawRect(0, 44, 128, 2);
+  /*
   display->drawHorizontalLine(0, 42, updatePos);
   display->drawHorizontalLine(0, 43, updatePos);
   display->drawHorizontalLine(0, 44, updatePos);
   display->drawHorizontalLine(0, 45, updatePos);
-  
+  */
   drawRssi(display);
-}
-
-void drawClockHeaderOverlay(OLEDDisplay* display, OLEDDisplayUiState* state) {
-    display->setColor(WHITE);
-    display->setFont(ArialMT_Plain_16);
-    display->setTextAlignment(TEXT_ALIGN_LEFT);
-    if (!IS_24HOUR) {
-        display->drawString(0, 48, timeClient.getAmPm());
-        display->setTextAlignment(TEXT_ALIGN_CENTER);
-        display->drawString(64, 47, "offline");
-    } else {
-        display->drawString(0, 47, "offline");
-    }
-    display->setTextAlignment(TEXT_ALIGN_LEFT);
-    display->drawRect(0, 43, 128, 2);
-
-    drawRssi(display);
 }
 
 void drawRssi(OLEDDisplay* display) {
@@ -1394,7 +1456,7 @@ int getMinutesFromLastDisplay() {
 
 // Toggle on and off the display if user defined times
 void checkDisplay() {
-  
+
 }
 
 void enableDisplay(boolean enable) {
