@@ -26,6 +26,21 @@ SOFTWARE.
     Removed all extraneous code.
 
     Updated SPS30 code to use library, instead of bit bashing.
+
+    Updated web page to look noice.
+
+    Added logging functionalty
+    see https://github.com/esp8266/arduino-esp8266fs-plugin
+    and https://circuits4you.com/2018/03/10/esp8266-jquery-and-ajax-web-server
+    using: https://cdnjs.com/libraries/Chart.js
+    for logging: https://github.com/bitmario/SPIFFSLogger
+
+    Added circuitry for monitoring battery voltage.  
+    Since the ESP reads 0-1V we need a voltage divider of 174K/10K. This gives 
+    a 1V/full scale reading at 18.4 volts, i.e. take the adc reading and divide
+    by 55.6 for the actual volts. Charge when voltage drops to 6.6. The box
+    should be shut off by then.
+
  */
 
 /* VOC Notes:
@@ -315,7 +330,11 @@ void setup() {
         server.on("/updateweatherconfig", handleUpdateWeather);
         server.on("/configure", handleConfigure);
         server.on("/configureweather", handleWeatherConfigure);
-        server.onNotFound(redirectHome);
+//        server.onNotFound(redirectHome);
+        server.onNotFound(handleWebRequests); //Set setver all paths are not found so we can handle as per URI
+        server.on("/readADC", handleADC); //This page is called by java Script AJAX
+ 
+  
         serverUpdater.setup(&server, "/update", www_username, www_password);
         // Start the server
         server.begin();
@@ -1477,4 +1496,59 @@ void enableDisplay(boolean enable) {
                        timeClient.getFormattedTime());
         displayOffEpoch = lastEpoch;
     }
+}
+
+/* web logging code */
+void handleWebRequests(){
+  if(loadFromSpiffs(server.uri())) return;
+  String message = "File Not Detected\n\n";
+  message += "URI: ";
+  message += server.uri();
+  message += "\nMethod: ";
+  message += (server.method() == HTTP_GET)?"GET":"POST";
+  message += "\nArguments: ";
+  message += server.args();
+  message += "\n";
+  for (uint8_t i=0; i<server.args(); i++){
+    message += " NAME:"+server.argName(i) + "\n VALUE:" + server.arg(i) + "\n";
+  }
+  server.send(404, "text/plain", message);
+  Serial.println(message);
+}
+
+bool loadFromSpiffs(String path){
+  String dataType = "text/plain";
+  if(path.endsWith("/")) path += "index.htm";
+ 
+  if(path.endsWith(".src")) path = path.substring(0, path.lastIndexOf("."));
+  else if(path.endsWith(".html")) dataType = "text/html";
+  else if(path.endsWith(".htm")) dataType = "text/html";
+  else if(path.endsWith(".css")) dataType = "text/css";
+  else if(path.endsWith(".js")) dataType = "application/javascript";
+  else if(path.endsWith(".png")) dataType = "image/png";
+  else if(path.endsWith(".gif")) dataType = "image/gif";
+  else if(path.endsWith(".jpg")) dataType = "image/jpeg";
+  else if(path.endsWith(".ico")) dataType = "image/x-icon";
+  else if(path.endsWith(".xml")) dataType = "text/xml";
+  else if(path.endsWith(".pdf")) dataType = "application/pdf";
+  else if(path.endsWith(".zip")) dataType = "application/zip";
+  File dataFile = SPIFFS.open(path.c_str(), "r");
+  if (server.hasArg("download")) dataType = "application/octet-stream";
+  if (server.streamFile(dataFile, dataType) != dataFile.size()) {
+  }
+ 
+  dataFile.close();
+  return true;
+}
+
+void handleADC() {
+
+    /* pass along the battery voltage */
+    float volts = (float) analogRead(A0) / 57.8; /* this divisor is a bit empirical */
+    String adcValue = String(m.mc_1p0) + "," + String(m.mc_2p5 - m.mc_1p0) +
+                      "," + String(m.mc_4p0 - m.mc_2p5) + "," +
+                      String(m.mc_10p0 - m.mc_4p0) + "," + String(volts);
+    server.send(200,
+                "text/plane",
+                adcValue); // Send ADC value only to client ajax request
 }
