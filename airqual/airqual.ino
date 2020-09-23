@@ -332,7 +332,7 @@ void setup() {
         server.on("/configureweather", handleWeatherConfigure);
 //        server.onNotFound(redirectHome);
         server.onNotFound(handleWebRequests); //Set setver all paths are not found so we can handle as per URI
-        server.on("/readADC", handleADC); //This page is called by java Script AJAX
+        server.on("/readquality", handle_quality); //This page is called by java Script AJAX
  
   
         serverUpdater.setup(&server, "/update", www_username, www_password);
@@ -464,32 +464,32 @@ void loop() {
             delay(100); /* retry in 100ms */
         } while (1);
 
-        ret = sps30_read_measurement(&m);
+        ret = sps30_read_measurement(&data_sample.m);
         if (ret < 0) {
             Serial.print("error reading measurement\n");
             delay(1000);
-
         } else {
+            struct sps30_measurement *m =&data_sample.m;
             Serial.print("pm1.0 ug/m^3= ");
-            Serial.println(m.mc_1p0);
+            Serial.println(m->mc_1p0);
             Serial.print("pm2.5 ug/m^3= ");
-            Serial.println(m.mc_2p5 - m.mc_1p0);
+            Serial.println(m->mc_2p5 - m->mc_1p0);
             Serial.print("pm4.0 ug/m^3= ");
-            Serial.println(m.mc_4p0 - m.mc_2p5);
+            Serial.println(m->mc_4p0 - m->mc_2p5);
             Serial.print("pm10. ug/m^3= ");
-            Serial.println(m.mc_10p0 - m.mc_4p0);
+            Serial.println(m->mc_10p0 - m->mc_4p0);
             Serial.print("particle count 0.5 #/cm^3= ");
-            Serial.println(m.nc_0p5);
+            Serial.println(m->nc_0p5);
             Serial.print("particle count 1.0 #/cm^3= ");
-            Serial.println(m.nc_1p0 - m.nc_0p5);
+            Serial.println(m->nc_1p0 - m->nc_0p5);
             Serial.print("particle count 2.5 #/cm^3= ");
-            Serial.println(m.nc_2p5 - m.nc_1p0);
+            Serial.println(m->nc_2p5 - m->nc_1p0);
             Serial.print("particle count 4.0 #/cm^3= ");
-            Serial.println(m.nc_4p0 - m.nc_2p5);
+            Serial.println(m->nc_4p0 - m->nc_2p5);
             Serial.print("particle count 10. #/cm^3= ");
-            Serial.println(m.nc_10p0 - m.nc_4p0);
+            Serial.println(m->nc_10p0 - m->nc_4p0);
             Serial.print("avg particlesize um= ");
-            Serial.println(m.typical_particle_size);
+            Serial.println(m->typical_particle_size);
         } // end read particle measurments
         // read VOC
         mincount++;
@@ -577,6 +577,7 @@ void starttemprh(void){ // starts sensirion SVM30 temperature measurements
 
 void readtemprh(void){ // read sensirion SVM30 temperature and humidity measurements
   // dv for temp and RH, after 15msec, read and 4 bytes data with 2 crc's, save in ram, calc to display
+  bool ret = 0;
   Wire.requestFrom(0x70, 6);          // request data bytes from slave device 0x70
   if (6 <= Wire.available()) {
     for(tmp=0;tmp<6;tmp++) {
@@ -587,17 +588,9 @@ void readtemprh(void){ // read sensirion SVM30 temperature and humidity measurem
     for(reslt=0;reslt<3;reslt++){        // read 2 bytes data and crc
       flt[reslt]=data[(tmp*3)+reslt];
     }
-    if(CalcCrc(flt)==flt[2]) chk[tmp]=1; // crc pass
-    else chk[tmp]=0;                     // crc fail
+    if(CalcCrc(flt)!=flt[2]) ret = true; // crc fail
   }
-  reslt=0;
-  for(tmp=0;tmp<2;tmp++) {
-    if(chk[tmp]==0) reslt=1;             // one or more crc's fail
-    if(chk[tmp]==0) {
-//    Serial.print(tmp);Serial.print("crc byte fail\n\r");
-    }
-  }
-  if(reslt==1) {
+  if(ret) {
     Serial.println("crc failed");
   }
   else {
@@ -625,6 +618,7 @@ void iicWr2byteandcrc(uint8_t addr, uint8_t hibyte, uint8_t lobyte) {
 }
 
 uint8_t iicRdVOC(uint8_t addr, uint8_t numbytes) {// data is returned in global data[] return of 1 means fail
+  uint8_t chk[10];
   Wire.requestFrom(addr, numbytes);               // request numbytes from slave device
   for(tmp=0;tmp<numbytes;tmp++){
     data[tmp]=Wire.read();
@@ -964,6 +958,8 @@ String getFooter() {
 
 void display_air_quality() {
     digitalWrite(externalLight, LOW);
+    struct sps30_measurement *m = &data_sample.m;
+
     String html = "";
 
     server.sendHeader("Cache-Control", "no-cache, no-store");
@@ -989,17 +985,17 @@ void display_air_quality() {
     html += "<tr>";
     html += "<th>Size</th><th>Count</th><th>ug/m^3</th>"; // dv
     html += "</tr><tr>";
-    html += "<td>PM<sub>0.5</sub></td><td>" + String(m.nc_0p5) + "</td><td>--</td>";
+    html += "<td>PM<sub>0.5</sub></td><td>" + String(m->nc_0p5) + "</td><td>--</td>";
     html += "</tr><tr>";
-    html += "<td>PM<sub>1.0</sub></td><td>" + String(m.nc_1p0 - m.nc_0p5) + "</td><td>" +  String(m.mc_1p0) + "</td>";
+    html += "<td>PM<sub>1.0</sub></td><td>" + String(m->nc_1p0 - m->nc_0p5) + "</td><td>" +  String(m->mc_1p0) + "</td>";
     html += "</tr><tr>";
-    html += "<td>PM<sub>2.5</sub></td><td>" + String(m.nc_2p5 - m.nc_1p0) + "</td><td>" +  String(m.mc_2p5 - m.mc_1p0) + "</td>";
+    html += "<td>PM<sub>2.5</sub></td><td>" + String(m->nc_2p5 - m->nc_1p0) + "</td><td>" +  String(m->mc_2p5 - m->mc_1p0) + "</td>";
     html += "</tr><tr>";
-    html += "<td>PM<sub>4.0</sub></td><td>" + String(m.nc_4p0 - m.nc_2p5) + "</td><td>" +  String(m.mc_4p0 - m.mc_2p5) + "</td>";
+    html += "<td>PM<sub>4.0</sub></td><td>" + String(m->nc_4p0 - m->nc_2p5) + "</td><td>" +  String(m->mc_4p0 - m->mc_2p5) + "</td>";
     html += "</tr><tr>";
-    html += "<td>PM<sub>10</sub></td><td>" + String(m.nc_10p0 - m.nc_4p0) + "</td><td>" +  String(m.mc_10p0 - m.mc_4p0) + "</td>";
+    html += "<td>PM<sub>10</sub></td><td>" + String(m->nc_10p0 - m->nc_4p0) + "</td><td>" +  String(m->mc_10p0 - m->mc_4p0) + "</td>";
     html += "</tr></table>";
-    html += "average particle size (um) : " + String(m.typical_particle_size) +
+    html += "average particle size (um) : " + String(m->typical_particle_size) +
             "<br>";                                        // dv
     html += "<br>";                                        // dv
     html += "TVOC (ppb) : " + String(TVOC) + "<br>";       // dv
@@ -1112,39 +1108,47 @@ void drawScreen2(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int
   display->drawString(64 + x, 14 + y, time);
 }
 
-void drawScreen3(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
-  display->setTextAlignment(TEXT_ALIGN_CENTER);
-  display->setFont(ArialMT_Plain_16);
+void drawScreen3(OLEDDisplay*        display,
+                 OLEDDisplayUiState* state,
+                 int16_t             x,
+                 int16_t             y) {
+    display->setTextAlignment(TEXT_ALIGN_CENTER);
+    display->setFont(ArialMT_Plain_16);
 
-  display->drawString(64 + x, 0 + y, "Printing Time");
-  //display->setTextAlignment(TEXT_ALIGN_LEFT);
-  display->setFont(ArialMT_Plain_24);
-  int val = 6666;
-  int hours = numberOfHours(val);
-  int minutes = numberOfMinutes(val);
-  int seconds = numberOfSeconds(val);
+    display->drawString(64 + x, 0 + y, "Printing Time");
+    // display->setTextAlignment(TEXT_ALIGN_LEFT);
+    display->setFont(ArialMT_Plain_24);
+    int val     = 6666;
+    int hours   = numberOfHours(val);
+    int minutes = numberOfMinutes(val);
+    int seconds = numberOfSeconds(val);
 
-  String time = zeroPad(hours) + ":" + zeroPad(minutes) + ":" + zeroPad(seconds);
-  display->drawString(64 + x, 14 + y, time);
+    String time =
+        zeroPad(hours) + ":" + zeroPad(minutes) + ":" + zeroPad(seconds);
+    display->drawString(64 + x, 14 + y, time);
 }
 
 void drawTinyAQ(OLEDDisplay*        display,
                OLEDDisplayUiState* state,
                int16_t             x,
                int16_t             y) {
+
+    struct sps30_measurement* m = &data_sample.m;
+
+
     display->setTextAlignment(TEXT_ALIGN_LEFT);
     display->setFont(ArialMT_Plain_10);
 
     display->drawString(x+0, 10, "pm1.0");
-    display->drawString(x+32, 10, String(m.mc_1p0));
+    display->drawString(x+32, 10, String(m->mc_1p0));
     display->drawString(x+68, 10, "pm2.5");
-    display->drawString(x+100, 10, String(m.mc_2p5 - m.mc_1p0));
+    display->drawString(x+100, 10, String(m->mc_2p5 - m->mc_1p0));
     display->drawString(x+0, 20, "pm4.0");
-    display->drawString(x+32, 20, String(m.mc_4p0 - m.mc_2p5));
+    display->drawString(x+32, 20, String(m->mc_4p0 - m->mc_2p5));
     display->drawString(x+68, 20, "pm10.");
-    display->drawString(x+100, 20, String(m.mc_10p0 - m.mc_4p0));
+    display->drawString(x+100, 20, String(m->mc_10p0 - m->mc_4p0));
     display->drawString(x+0, 30, "avg um");
-    display->drawString(x+38, 30, String(m.typical_particle_size));
+    display->drawString(x+38, 30, String(m->typical_particle_size));
     display->drawString(x+62, 30, "tvocppb");
     display->drawString(x+103, 30, String(TVOC)); //
     //  display->drawString( 0, 40, "aaaaaaaaaaaaaaaaaaaaaaaaaa");// 4th and 5th
@@ -1185,55 +1189,62 @@ void drawPM05(OLEDDisplay*        display,
               OLEDDisplayUiState* state,
               int16_t             x,
               int16_t             y) {
-    drawPM(display, state, x, y, "0.5", String(m.nc_0p5), String("--"));
+            struct sps30_measurement *m =&data_sample.m;
+
+    drawPM(display, state, x, y, "0.5", String(m->nc_0p5), String("--"));
 }
 void drawPM10(OLEDDisplay*        display,
               OLEDDisplayUiState* state,
               int16_t             x,
               int16_t             y) {
+            struct sps30_measurement *m =&data_sample.m;
+
     drawPM(display,
            state,
            x,
            y,
            "1.0",
-           String(m.nc_1p0 - m.nc_0p5),
-           String(m.mc_1p0));
+           String(m->nc_1p0 - m->nc_0p5),
+           String(m->mc_1p0));
 }
 void drawPM25(OLEDDisplay*        display,
               OLEDDisplayUiState* state,
               int16_t             x,
               int16_t             y) {
+            struct sps30_measurement *m =&data_sample.m;
     drawPM(display,
            state,
            x,
            y,
            "2.5",
-           String(m.nc_2p5 - m.nc_1p0),
-           String(m.mc_2p5 - m.mc_1p0));
+           String(m->nc_2p5 - m->nc_1p0),
+           String(m->mc_2p5 - m->mc_1p0));
 }
 void drawPM40(OLEDDisplay*        display,
               OLEDDisplayUiState* state,
               int16_t             x,
               int16_t             y) {
+            struct sps30_measurement *m =&data_sample.m;
     drawPM(display,
            state,
            x,
            y,
            "4.0",
-           String(m.nc_4p0 - m.nc_2p5),
-           String(m.mc_4p0 - m.mc_2p5));
+           String(m->nc_4p0 - m->nc_2p5),
+           String(m->mc_4p0 - m->mc_2p5));
 }
 void drawPM100(OLEDDisplay*        display,
                OLEDDisplayUiState* state,
                int16_t             x,
                int16_t             y) {
+            struct sps30_measurement *m =&data_sample.m;
     drawPM(display,
            state,
            x,
            y,
            "10",
-           String(m.nc_10p0 - m.nc_4p0),
-           String(m.mc_10p0 - m.mc_4p0));
+           String(m->nc_10p0 - m->nc_4p0),
+           String(m->mc_10p0 - m->mc_4p0));
 }
 
 void drawWeather(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
@@ -1541,14 +1552,17 @@ bool loadFromSpiffs(String path){
   return true;
 }
 
-void handleADC() {
+void handle_quality() {
 
     /* pass along the battery voltage */
-    float volts = (float) analogRead(A0) / 57.8; /* this divisor is a bit empirical */
-    String adcValue = String(m.mc_1p0) + "," + String(m.mc_2p5 - m.mc_1p0) +
-                      "," + String(m.mc_4p0 - m.mc_2p5) + "," +
-                      String(m.mc_10p0 - m.mc_4p0) + "," + String(volts);
+    float volts =
+        (float) analogRead(A0) / 57.8; /* this divisor is a bit empirical */
+    struct sps30_measurement* m = &data_sample.m;
+
+    String quality = String(m->mc_1p0) + "," + String(m->mc_2p5 - m->mc_1p0) +
+                      "," + String(m->mc_4p0 - m->mc_2p5) + "," +
+                      String(m->mc_10p0 - m->mc_4p0) + "," + String(volts);
     server.send(200,
                 "text/plane",
-                adcValue); // Send ADC value only to client ajax request
+                quality); // Send air quality data to client ajax request
 }

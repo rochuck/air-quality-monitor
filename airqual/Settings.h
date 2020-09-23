@@ -94,20 +94,30 @@ const int externalLight = LED_BUILTIN; // Set to unused pin, like D1, to disable
 boolean ENABLE_OTA = true;     // this will allow you to load firmware to the device over WiFi (see OTA for ESP8266)
 String OTA_Password = "";      // Set an OTA password here -- leave blank if you don't want to be prompted for password
 
+String themeColor = "light-green"; // this can be changed later in the web interface.
+
 //******************************
 // End Settings
 //******************************
 
-String themeColor = "light-green"; // this can be changed later in the web interface.
+// SVM global data, arguably should be put in the .c file.
 
-struct sps30_measurement m; /* for sps30 data */
+typedef struct {
+    struct sps30_measurement m; /* for sps30 data */
+    float                    tempC;
+    float                    RH;
+    uint16_t                 TVOC;  //
+    uint16_t                 CO2eq; //
+} data_sample_t;
 
-uint8_t  debug[10]; //
+data_sample_t data_sample; /* all the measured data goes here for logging */
+
+
+
 uint8_t  reslt;
 uint8_t  data[10]; /* Data buffer for i2c */
 uint8_t  tmp;
 uint8_t  flt[4];      /** @todo CGR change this, its just bytes for eeprom */
-uint8_t  chk[20];     // crc checks for 10 readings x 2 bytes crc
 uint16_t readings[2]; // 2 16 bit integers
 uint16_t tempraw;
 float    tempC;
