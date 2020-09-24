@@ -1596,37 +1596,48 @@ void handle_quality() {
                 quality); // Send air quality data to client ajax request
 }
 
-#define MAX_ROWS 10
+/* This has turned into a big hack.  We send the whole data set on this request,
+ * and we do it incrementally */
+
 void handle_daily() {
     int                                 i = 0;
-    struct SPIFFSLogData<data_sample_t> sample[MAX_ROWS]; /* this might not work */
+    struct SPIFFSLogData<data_sample_t> sample[5]; /* just one sample at a time */
     const time_t                        now       = time(nullptr);
     size_t                              row_count = logger.rowCount(now);
-    Serial.printf("Want to send %zu data points to web page\n", row_count);
+    size_t                              row = 0;
+    struct sps30_measurement*           m            = &sample[0].data.m;
+    size_t                              buff_to_fill = row_count * 60;
+    /* this is how we parse args --    int start =
+     * atoi(server.arg("start").c_str()); */
 
-    int max_rows = MAX_ROWS;
-    if (row_count>max_rows) {row_count=max_rows;}
+    Serial.printf("Want to send %zu data points to web page\n",  row_count);
 
-    /* get the raw data */
-    row_count = logger.readRows(sample, now, 0, row_count);
-
-    Serial.printf("Read back %zu rows\n", row_count);
+    /* send the speculative header */
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+//    server.sendHeader("Content-Length", "10000");
+    server.send(200, "text/plain", "\r\n");
 
     String full = String(row_count);
-    for (int i = 0; i < row_count; i++) {
-        struct sps30_measurement* m = &sample[i].data.m;
+    server.sendContent(full);
+    buff_to_fill -= full.length();
 
-        full += "," + String(m->mc_1p0) + "," + String(m->mc_2p5 - m->mc_1p0) +
-                "," + String(m->mc_4p0 - m->mc_2p5) + "," +
-                String(m->mc_10p0 - m->mc_4p0) + "," +
-                String(sample[i].data.volts) + "," +
-                String(sample[i].timestampUTC);
-                Serial.println("String is "+ full +"\n");
+    /* get the raw data */
+    while (logger.readRows(sample, now, row, 1) && (row < row_count)) {
+
+        //Serial.printf("Read back row %zu\n", row);
+        full = "," + String(m->mc_1p0) + "," + String(m->mc_2p5 - m->mc_1p0) +
+               "," + String(m->mc_4p0 - m->mc_2p5) + "," +
+               String(m->mc_10p0 - m->mc_4p0) + "," +
+               String(sample[0].data.volts) + "," +
+               String(sample[0].timestampUTC);
+
+        //Serial.println("String is " + full + "\n");
+        server.sendContent(full);
+        buff_to_fill -= full.length();
+        row++; /* get the next row */
     }
-    server.send(200,
-                "text/plain",
-                full); // Send air quality data to client ajax request
 }
+
 
 void handlefavicon() {
     File    file = SPIFFS.open("/favicon.ico","r");
