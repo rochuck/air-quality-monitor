@@ -1,0 +1,199 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>Air Quality Log Daily Historical</title>
+    <script src="chart.js"></script>
+    <style>
+        canvas {
+            -moz-user-select: none;
+            -webkit-user-select: none;
+            -ms-user-select: none;
+        }
+
+        /* Data Table Styling */
+        #dataTable {
+            font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        #dataTable td,
+        #dataTable th {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+
+        #dataTable tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+
+        #dataTable tr:hover {
+            background-color: #ddd;
+        }
+
+        #dataTable th {
+            padding-top: 12px;
+            padding-bottom: 12px;
+            text-align: left;
+            background-color: #4CAF50;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <div style="text-align:center;"><b>Air Quality Monitor</b><br>Today's Historical Air Quality</div>
+    <div class="chart-container" position: relative; height:350px; width:100%">
+        <canvas id="Chart" width="400" height="400"></canvas>
+    </div>
+    <div>
+        <table id="dataTable">
+            <tr>
+                <th>Time</th>
+                <th>PM 1.0</th>
+                <th>PM 2.5</th>
+                <th>PM 4.0</th>
+                <th>PM 10.0</th>
+                <th>Sensor Voltage</th>
+            </tr>
+        </table>
+    </div>
+    <br>
+    <br>
+
+    <script>
+        //Graphs visit: https://www.chartjs.org
+        var pm1 = [];
+        var pm2p5 = [];
+        var pm4 = [];
+        var pm10 = [];
+        var voltage = [];
+        var timeStamp = [];
+        var superText="3";
+        function showGraph() {
+            var ctx = document.getElementById("Chart").getContext('2d');
+            var Chart2 = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: timeStamp,	//Bottom Labeling
+                    datasets: [{
+                        label: "PM 1.0",
+                        fill: false,	
+                        backgroundColor: 'rgba( 243, 56, 18 , 1)', //Dot marker color
+                        borderColor: 'rgba( 243, 56, 18 , 1)',	//Graph Line Color
+                        data: pm1,
+                    },{
+                        label: "PM 2.5",
+                        fill: false,	
+                        backgroundColor: 'rgba( 143, 156, 18 , 1)', //Dot marker color
+                        borderColor: 'rgba( 143, 156, 18 , 1)',	//Graph Line Color
+                        data: pm2p5,
+                    },{
+                        label: "PM 4.0",
+                        fill: false,	
+                        backgroundColor: 'rgba( 43, 156, 118 , 1)', //Dot marker color
+                        borderColor: 'rgba( 43, 156, 118 , 1)',	//Graph Line Color
+                        data: pm4,
+                    },{
+                        label: "PM 10.0",
+                        fill: false,	
+                        backgroundColor: 'rgba( 243, 156, 118 , 1)', //Dot marker color
+                        borderColor: 'rgba( 243, 156, 118 , 1)',	//Graph Line Color
+                        data: pm10,
+                    },{
+                        label: "Voltage",
+                        fill: false,	
+                        backgroundColor: 'rgba( 3, 3, 118 , 1)', //Dot marker color
+                        borderColor: 'rgba( 3, 3, 118 , 1)',	//Graph Line Color
+                        data: voltage,
+                    }],
+                },
+                options: {
+                    title: {
+                        display: true,
+                        text: "uG/m^3 - Battery Voltage",
+                    },
+                    maintainAspectRatio: false,
+                    elements: {
+                        line: {
+                            tension: 0.5 //Smoothening (Curved) of data lines
+                        }
+                    },
+                    scales: {
+                        yAxes: [{
+                            ticks: {
+                                beginAtZero: true
+                            }
+                        }]
+                    }
+                }
+            });
+
+        }
+
+        //On Page load show graphs
+        window.onload = function () {
+            console.log(new Date().toLocaleTimeString());
+            getData();
+            //showGraph(5,10,4,58);
+        };
+
+        //Ajax script to get ADC voltage at every 60 Seconds 
+        //Read This tutorial https://circuits4you.com/2018/02/04/esp8266-ajax-update-part-of-web-page-without-refreshing/
+
+        setInterval(function () {
+            // Call a function repetatively with 5 Second interval
+            getData();
+        }, 60000); // 60 Second update rate
+
+        function getData() {
+            var xhttp = new XMLHttpRequest();
+            xhttp.onreadystatechange = function () {
+                if (this.readyState == 4 && this.status == 200) {
+                    //Push the data in array
+                    var PMValue = this.responseText;
+                    var vals = PMValue.split(',');
+                    var count = vals[0];
+
+                    var i;
+                    for (i = 0; i < count; i++) {
+                        var base = 1+i*6;
+                        var time = new Date(vals[base+5]*1000).toLocaleTimeString();
+                        pm1.push(vals[base]);
+                        pm2p5.push(vals[base+1]);
+                        pm4.push(vals[base+2]);
+                        pm10.push(vals[base+3]);
+                        voltage.push(vals[base+4])
+                        timeStamp.push(time);
+                    }
+                    showGraph();	//Update Graphs
+                    //Update Data Table
+                    var table = document.getElementById("dataTable");
+                    for (i = 0; i < count; i++) {
+                        var base = 1+ i * 6 ;
+                        var time = new Date(vals[base + 5]*1000).toLocaleTimeString();
+                        var row = table.insertRow(1);	//Add after headings
+                        var cell1 = row.insertCell(0);
+                        var cell2 = row.insertCell(1);
+                        var cell3 = row.insertCell(2);
+                        var cell4 = row.insertCell(3);
+                        var cell5 = row.insertCell(4);
+                        var cell6 = row.insertCell(5);
+                        cell1.innerHTML = time;
+                        cell2.innerHTML = vals[base];
+                        cell3.innerHTML = vals[base + 1];
+                        cell4.innerHTML = vals[base + 2];
+                        cell5.innerHTML = vals[base + 3];
+                        cell6.innerHTML = vals[base + 4];
+                    }
+                }
+            };
+            xhttp.open("GET", "readdaily", true);	//get todays data on esp
+            xhttp.send();
+        }
+
+    </script>
+</body>
+
+</html>

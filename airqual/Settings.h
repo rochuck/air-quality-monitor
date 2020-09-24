@@ -21,20 +21,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// Additional Contributions:
-/* 15 Jan 2019 : Owen Carter : Add psucontrol setting */
-
 /******************************************************************************
- * Printer Monitor is designed for the Wemos D1 ESP8266
- * Wemos D1 Mini:  https://amzn.to/2qLyKJd
- * 0.96" OLED I2C 128x64 Display (12864) SSD1306
- * OLED Display:  https://amzn.to/2JDEAUF
- ******************************************************************************/
-/******************************************************************************
- * NOTE: The settings here are the default settings for the first loading.  
- * After loading you will manage changes to the settings via the Web Interface.  
- * If you want to change settings again in the settings.h, you will need to 
- * erase the file system on the Wemos or use the “Reset Settings” option in 
+ * NOTE: The settings here are the default settings for the first loading.
+ * After loading you will manage changes to the settings via the Web Interface.
+ * If you want to change settings again in the settings.h, you will need to
+ * erase the file system on the Wemos or use the “Reset Settings” option in
  * the Web Interface.
  ******************************************************************************/
 
@@ -53,6 +44,9 @@ SOFTWARE.
 #include "OLEDDisplayUi.h"
 #include <Wire.h>
 #include <sps30.h>
+#include <SPIFFSLogger.h>
+#include <time.h>
+
 
 //******************************
 // Start Settings
@@ -62,7 +56,7 @@ SOFTWARE.
 boolean DISPLAYWEATHER = true; // true = show weather when not printing / false = no weather
 String WeatherApiKey = ""; // Your API Key from http://openweathermap.org/
 // Default City Location (use http://openweathermap.org/find to find city ID)
-int CityIDs[] = { 5304391 }; //Only USE ONE for weather marquee
+int CityIDs[] = { 5304391 };
 boolean IS_METRIC = false; // false = Imperial and true = Metric
 // Languages: ar, bg, ca, cz, de, el, en, fa, fi, fr, gl, hr, hu, it, ja, kr, la, lt, mk, nl, pl, pt, ro, ru, se, sk, sl, es, tr, ua, vi, zh_cn, zh_tw
 String WeatherLanguage = "en";  //Default (en) English
@@ -108,6 +102,7 @@ typedef struct {
     float                    RH;
     uint16_t                 TVOC;  //
     uint16_t                 CO2eq; //
+    float                    volts;
 } data_sample_t;
 
 data_sample_t data_sample; /* all the measured data goes here for logging */
@@ -127,4 +122,3 @@ uint16_t mincount; // minute counter for VOC baseline houskeeping
 uint8_t  baseline; // 0 if not initialized, 1 when initialized
 uint16_t TVOC;     //
 uint16_t CO2eq;    //
-

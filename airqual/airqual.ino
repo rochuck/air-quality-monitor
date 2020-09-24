@@ -88,6 +88,9 @@ SOFTWARE.
 
 OLEDDisplayUi   ui( &display );
 
+/* create the logger */
+SPIFFSLogger<data_sample_t> logger("/log/mydata",1);
+
 void drawProgress(OLEDDisplay *display, int percentage, String label);
 void drawOtaProgress(unsigned int, unsigned int);
 void drawScreen1(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
@@ -128,6 +131,8 @@ ESP8266WebServer server(WEBSERVER_PORT);
 ESP8266HTTPUpdateServer serverUpdater;
 
 String WEB_ACTIONS =  "<a class='w3-bar-item w3-button' href='/'><i class='fa fa-home'></i> Home</a>"
+                      "<a class='w3-bar-item w3-button' href='/index.html'><i class='fa fa-area-chart'></i> Real Time</a>"
+                      "<a class='w3-bar-item w3-button' href='/daily.html'><i class='fa fa-line-chart'></i> Daily Historical</a>"
                       "<a class='w3-bar-item w3-button' href='/configure'><i class='fa fa-cog'></i> Configure</a>"
                       "<a class='w3-bar-item w3-button' href='/configureweather'><i class='fa fa-cloud'></i> Weather</a>"
                       "<a class='w3-bar-item w3-button' href='/systemreset' onclick='return confirm(\"Do you want to reset to default settings?\")'><i class='fa fa-undo'></i> Reset Settings</a>"
@@ -223,7 +228,9 @@ void setup() {
 
     Serial.begin(115200);
     SPIFFS.begin();
-    delay(10);
+    delay(2000);
+
+
 
     // New Line to clear from start garbage
     Serial.println();
@@ -330,9 +337,11 @@ void setup() {
         server.on("/updateweatherconfig", handleUpdateWeather);
         server.on("/configure", handleConfigure);
         server.on("/configureweather", handleWeatherConfigure);
+        server.on("/favicon.ico", handlefavicon);
 //        server.onNotFound(redirectHome);
         server.onNotFound(handleWebRequests); //Set setver all paths are not found so we can handle as per URI
         server.on("/readquality", handle_quality); //This page is called by java Script AJAX
+        server.on("/readdaily", handle_daily); //This page is called by java Script AJAX
  
   
         serverUpdater.setup(&server, "/update", www_username, www_password);
@@ -389,7 +398,6 @@ void setup() {
     starttemprh(); // start measurement
     delay(15);     // wait for humidity measurement to complete
     readtemprh();  // get initial reading to setup VOC
-    starttemprh(); // so ready in main
 
     // dv need humidity to set up voc sensor
     // dv init VOC, wait 2msec, set humidity, if baseline set baseline, then set
@@ -414,6 +422,16 @@ void setup() {
     // now ready to read VOC anytime or every minute and save baseline every
     // hour, optionally log data every 10 min or hour
     // dv
+
+    /* set up logging here, logger uses this version of time ug */
+    configTime(0, 0, "pool.ntp.org");
+
+    logger.init();
+    /*  our data record size: 52 bytes*/
+    Serial.printf("sizeof(data_sample_t): %zu\n", sizeof(data_sample_t));
+    /* time_t timestamp + our data, as stored in SPIFFS: 56 bytes */
+    Serial.printf("sizeof(SPIFFSLogData<data_sample_t>): %zu\n", sizeof(SPIFFSLogData<data_sample_t>));
+
     Serial.println("*** Leaving setup()");
 }
 
@@ -430,6 +448,10 @@ void loop() {
         getUpdateTime();
     }
 
+    /* do the logging stuff */
+//    Serial.printf("******** Calling process!");
+    logger.process();
+
     if (lastMinute != timeClient.getMinutes()) {
         // Check status every 60 seconds
         digitalWrite(externalLight, LOW);
@@ -437,8 +459,9 @@ void loop() {
         digitalWrite(externalLight, HIGH);
         // dv once per minute, read sensors, temp and humidity, particle counter
         // and VOC sensor
+        starttemprh();  /** @todo CGR not sure this makes sense */
+        delay(15);
         readtemprh(); // read started in setup
-                      //      read7021();
         Serial.println();
         Serial.print("temp     = ");
         Serial.print(tempC);
@@ -448,7 +471,6 @@ void loop() {
         Serial.print(RH);
         Serial.println(" %"); //
 
-        starttemprh();
         // sps30 particle   iic 0x69, shtc1 rh,t iic 0x70 (RH and T on svm30voc
         // board), sgp30 VOC sensor  iic 0x58 (VOC on svm30voc board)
 
@@ -534,7 +556,17 @@ void loop() {
                 mincount = 0;
             }
         }
-        // dv
+
+        float volts =
+        (float) analogRead(A0) / 57.8; /* this divisor is a bit empirical */
+        data_sample.volts = volts;
+        const time_t now = time(nullptr);
+        logger.write(data_sample);
+
+        size_t row_count = logger.rowCount(now);
+        Serial.printf("Number of rows is now %zu\n", row_count);
+     //   Serial.printf("Spiffs total %d, used %d\n", SPIFFS.totalBytes(), SPIFFS.usedBytes());
+
     }
 
     checkDisplay(); // Check to see if the printer is on or offline and change
@@ -896,11 +928,9 @@ String getHeader(boolean refresh) {
     html += "<html><head>";
     html += "<style>table {  }table, th, td {  border: 1px solid black;  border-collapse: collapse;}th, td {  padding: 15px;  text-align: left;}#t01 tr:nth-child(even) {  background-color: #eee;";
     html += "}#t01 tr:nth-child(odd) { background-color: #fff;}#t01 th {  background-color: grey;  color: white;}</style>";
-    html += "<title>Air Quality Monitor</title><link rel='icon' "
-            "href='data:;base64,='>"; // dv
+    html += "<title>Air Quality Monitor</title>"; //<link rel='icon' href='data:;base64,='>"; // dv
     html += "<meta charset='UTF-8'>";
-    html +=
-        "<meta name='viewport' content='width=device-width, initial-scale=1'>";
+    html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
     if (refresh) { html += "<meta http-equiv=\"refresh\" content=\"30\">"; }
     html += "<link rel='stylesheet' "
             "href='https://www.w3schools.com/w3css/4/w3.css'>";
@@ -908,8 +938,7 @@ String getHeader(boolean refresh) {
         "<link rel='stylesheet' href='https://www.w3schools.com/lib/w3-theme-" +
         themeColor + ".css'>";
     html += "<link rel='stylesheet' "
-            "href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/"
-            "css/font-awesome.min.css'>";
+            "href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css'>";
     html += "</head><body>";
     html += "<nav class='w3-sidebar w3-bar-block w3-card' "
             "style='margin-top:88px' id='mySidebar'>";
@@ -1563,6 +1592,46 @@ void handle_quality() {
                       "," + String(m->mc_4p0 - m->mc_2p5) + "," +
                       String(m->mc_10p0 - m->mc_4p0) + "," + String(volts);
     server.send(200,
-                "text/plane",
+                "text/plain",
                 quality); // Send air quality data to client ajax request
+}
+
+#define MAX_ROWS 10
+void handle_daily() {
+    int                                 i = 0;
+    struct SPIFFSLogData<data_sample_t> sample[MAX_ROWS]; /* this might not work */
+    const time_t                        now       = time(nullptr);
+    size_t                              row_count = logger.rowCount(now);
+    Serial.printf("Want to send %zu data points to web page\n", row_count);
+
+    int max_rows = MAX_ROWS;
+    if (row_count>max_rows) {row_count=max_rows;}
+
+    /* get the raw data */
+    row_count = logger.readRows(sample, now, 0, row_count);
+
+    Serial.printf("Read back %zu rows\n", row_count);
+
+    String full = String(row_count);
+    for (int i = 0; i < row_count; i++) {
+        struct sps30_measurement* m = &sample[i].data.m;
+
+        full += "," + String(m->mc_1p0) + "," + String(m->mc_2p5 - m->mc_1p0) +
+                "," + String(m->mc_4p0 - m->mc_2p5) + "," +
+                String(m->mc_10p0 - m->mc_4p0) + "," +
+                String(sample[i].data.volts) + "," +
+                String(sample[i].timestampUTC);
+                Serial.println("String is "+ full +"\n");
+    }
+    server.send(200,
+                "text/plain",
+                full); // Send air quality data to client ajax request
+}
+
+void handlefavicon() {
+    File    file = SPIFFS.open("/favicon.ico","r");
+    uint8_t data[500];
+    file.read(data, 500);
+    file.close();
+    server.send(200, "image/png", (const char *)data);
 }
