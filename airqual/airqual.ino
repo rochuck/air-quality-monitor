@@ -64,7 +64,7 @@ SOFTWARE.
 #include "Settings.h"
 #include <EEPROM.h>
 
-#define VERSION "2.5"
+#define VERSION "1.0.0"
 
 #define HOSTNAME "AirQual-"
 #define CONFIG "/conf.txt"
