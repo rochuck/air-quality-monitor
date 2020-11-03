@@ -26,6 +26,10 @@ It is recommended to use Arduino IDE an VSCode.  You will need to configure Ardu
 * Select Board:  "Generic ESP8266"
 * Set 4M SPIFFS -- this project uses SPIFFS for saving and reading configuration settings.
 
+The webpages are served up from the `/data` directory, to set this up use:
+https://randomnerdtutorials.com/install-esp8266-filesystem-uploader-arduino-ide/
+This will give you the option in the Arduino tools menu to `ESP8266 sketch data upload`
+
 ## Loading Supporting Library Files in Arduino
 Use the Arduino guide for details on how to installing and manage libraries https://www.arduino.cc/en/Guide/Libraries  
 **Packages** -- the following packages and libraries are used (download and install):  
@@ -40,9 +44,9 @@ ArduinoOTA.h  --> Arduino OTA Library
 
 
 ## Initial Configuration
-All settings may be managed from the Web Interface, however, you may update the **Settings.h** file manually -- but it is not required.  There is also an option to display current weather when the print is off-line.  
+All settings may be managed from the Web Interface, however, you may update the **Settings.h** file manually -- but it is not required.
 
-* Optional OpenWeatherMap API Key -- if you want current weather when not printing.  Get the api key from: https://openweathermap.org/  
+* Optional OpenWeatherMap API Key --  Get the api key from: https://openweathermap.org/  
 
 NOTE: The settings in the Settings.h are the default settings for the first loading. After loading you will manage changes to the settings via the Web Interface. If you want to change settings again in the settings.h, you will need to erase the file system on the Wemos or use the “Reset Settings” option in the Web Interface.  
 

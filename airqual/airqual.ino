@@ -337,8 +337,6 @@ void setup() {
         server.on("/updateweatherconfig", handleUpdateWeather);
         server.on("/configure", handleConfigure);
         server.on("/configureweather", handleWeatherConfigure);
-        server.on("/favicon.ico", handlefavicon);
-//        server.onNotFound(redirectHome);
         server.onNotFound(handleWebRequests); //Set setver all paths are not found so we can handle as per URI
         server.on("/readquality", handle_quality); //This page is called by java Script AJAX
         server.on("/readdaily", handle_daily); //This page is called by java Script AJAX
@@ -423,7 +421,7 @@ void setup() {
     // hour, optionally log data every 10 min or hour
     // dv
 
-    /* set up logging here, logger uses this version of time ug */
+    /* set up logging here, logger uses this version of time ugh */
     configTime(0, 0, "pool.ntp.org");
 
     logger.init();
@@ -448,7 +446,7 @@ void loop() {
         getUpdateTime();
     }
 
-    /* do the logging stuff */
+    /* do the logging stuff, required */
 //    Serial.printf("******** Calling process!");
     logger.process();
 
@@ -557,10 +555,14 @@ void loop() {
             }
         }
 
+        /* fill out the voc and co2 in the data sample */
+        data_sample.CO2eq = CO2eq;
+        data_sample.TVOC  = TVOC;
+
         float volts =
-        (float) analogRead(A0) / 57.8; /* this divisor is a bit empirical */
+            (float) analogRead(A0) / 57.8; /* this divisor is a bit empirical */
         data_sample.volts = volts;
-        const time_t now = time(nullptr);
+        const time_t now  = time(nullptr);
         logger.write(data_sample);
 
         size_t row_count = logger.rowCount(now);
@@ -569,8 +571,7 @@ void loop() {
 
     }
 
-    checkDisplay(); // Check to see if the printer is on or offline and change
-                    // display.
+    checkDisplay(); 
 
     ui.update();
 
@@ -1638,11 +1639,3 @@ void handle_daily() {
     }
 }
 
-
-void handlefavicon() {
-    File    file = SPIFFS.open("/favicon.ico","r");
-    uint8_t data[500];
-    file.read(data, 500);
-    file.close();
-    server.send(200, "image/png", (const char *)data);
-}
