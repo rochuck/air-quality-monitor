@@ -55,6 +55,8 @@
                 <th>PM 2.5</th>
                 <th>PM 4.0</th>
                 <th>PM 10.0</th>
+                <th>TVOC</th>
+                <th>CO2 equiv</th>
                 <th>Sensor Voltage</th>
             </tr>
         </table>
@@ -68,6 +70,8 @@
         var pm2p5 = [];
         var pm4 = [];
         var pm10 = [];
+        var tvoc = [];
+        var co2e = [];
         var voltage = [];
         var timeStamp = [];
         var superText="3";
@@ -79,40 +83,59 @@
                     labels: timeStamp,	//Bottom Labeling
                     datasets: [{
                         label: "PM 1.0",
-                        fill: false,	
+                        fill: false,
                         backgroundColor: 'rgba( 243, 56, 18 , 1)', //Dot marker color
                         borderColor: 'rgba( 243, 56, 18 , 1)',	//Graph Line Color
                         data: pm1,
+                        yAxisID: 'y-axis-left',
                     },{
                         label: "PM 2.5",
-                        fill: false,	
+                        fill: false,
                         backgroundColor: 'rgba( 143, 156, 18 , 1)', //Dot marker color
                         borderColor: 'rgba( 143, 156, 18 , 1)',	//Graph Line Color
                         data: pm2p5,
+                        yAxisID: 'y-axis-left',
                     },{
                         label: "PM 4.0",
-                        fill: false,	
+                        fill: false,
                         backgroundColor: 'rgba( 43, 156, 118 , 1)', //Dot marker color
                         borderColor: 'rgba( 43, 156, 118 , 1)',	//Graph Line Color
                         data: pm4,
+                        yAxisID: 'y-axis-left',
                     },{
                         label: "PM 10.0",
-                        fill: false,	
+                        fill: false,
                         backgroundColor: 'rgba( 243, 156, 118 , 1)', //Dot marker color
                         borderColor: 'rgba( 243, 156, 118 , 1)',	//Graph Line Color
                         data: pm10,
+                        yAxisID: 'y-axis-left',
+                    },{
+                        label: "TVOC",
+                        fill: false,
+                        backgroundColor: 'rgba( 243, 156, 200 , 1)', //Dot marker color
+                        borderColor: 'rgba( 243, 156, 200 , 1)',	//Graph Line Color
+                        data: tvoc,
+                        yAxisID: 'y-axis-right',
+                    },{
+                        label: "CO2eq",
+                        fill: false,
+                        backgroundColor: 'rgba( 243, 200, 118 , 1)', //Dot marker color
+                        borderColor: 'rgba( 243, 200, 118 , 1)',	//Graph Line Color
+                        data: co2e,
+                        yAxisID: 'y-axis-right',
                     },{
                         label: "Voltage",
-                        fill: false,	
+                        fill: false,
                         backgroundColor: 'rgba( 3, 3, 118 , 1)', //Dot marker color
                         borderColor: 'rgba( 3, 3, 118 , 1)',	//Graph Line Color
                         data: voltage,
+                        yAxisID: 'y-axis-left',
                     }],
                 },
                 options: {
                     title: {
                         display: true,
-                        text: "uG/m^3 - Battery Voltage",
+                        text: "uG/m^3 - Battery Voltage - TVOC ppb - CO2 eq ppm",
                     },
                     maintainAspectRatio: false,
                     elements: {
@@ -124,7 +147,15 @@
                         yAxes: [{
                             ticks: {
                                 beginAtZero: true
-                            }
+                            },
+                            position: 'left',
+                            id: 'y-axis-left'
+                        }, {
+                            ticks: {
+                                beginAtZero: true
+                            },
+                            position: 'right',
+                            id: 'y-axis-right'
                         }]
                     }
                 }
@@ -138,7 +169,7 @@
             //showGraph(5,10,4,58);
         };
 
-        //Ajax script to get ADC voltage at every 60 Seconds 
+        //Ajax script to get ADC voltage at every 60 Seconds
         //Read This tutorial https://circuits4you.com/2018/02/04/esp8266-ajax-update-part-of-web-page-without-refreshing/
 
         setInterval(function () {
@@ -159,7 +190,9 @@
                     pm4.push(vals[2]);
                     pm10.push(vals[3]);
                     timeStamp.push(time);
-                    voltage.push(vals[4])
+                    tvoc.push(vals[4])
+                    co2e.push(vals[5])
+                    voltage.push(vals[6])
                     showGraph();	//Update Graphs
                     //Update Data Table
                     var table = document.getElementById("dataTable");
@@ -170,12 +203,16 @@
                     var cell4 = row.insertCell(3);
                     var cell5 = row.insertCell(4);
                     var cell6 = row.insertCell(5);
+                    var cell7 = row.insertCell(6);
+                    var cell8 = row.insertCell(7);
                     cell1.innerHTML = time;
                     cell2.innerHTML = vals[0];
                     cell3.innerHTML = vals[1];
                     cell4.innerHTML = vals[2];
                     cell5.innerHTML = vals[3];
                     cell6.innerHTML = vals[4];
+                    cell7.innerHTML = vals[5];
+                    cell8.innerHTML = vals[6];
                 }
             };
             xhttp.open("GET", "readquality", true);	//Handle readADC server on ESP8266

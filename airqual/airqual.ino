@@ -35,8 +35,8 @@ SOFTWARE.
     using: https://cdnjs.com/libraries/Chart.js
     for logging: https://github.com/bitmario/SPIFFSLogger
 
-    Added circuitry for monitoring battery voltage.  
-    Since the ESP reads 0-1V we need a voltage divider of 174K/10K. This gives 
+    Added circuitry for monitoring battery voltage.
+    Since the ESP reads 0-1V we need a voltage divider of 174K/10K. This gives
     a 1V/full scale reading at 18.4 volts, i.e. take the adc reading and divide
     by 55.6 for the actual volts. Charge when voltage drops to 6.6. The box
     should be shut off by then.
@@ -132,7 +132,7 @@ ESP8266HTTPUpdateServer serverUpdater;
 
 String WEB_ACTIONS =  "<a class='w3-bar-item w3-button' href='/'><i class='fa fa-home'></i> Home</a>"
                       "<a class='w3-bar-item w3-button' href='/index.html'><i class='fa fa-area-chart'></i> Real Time</a>"
-                      "<a class='w3-bar-item w3-button' href='/daily.html'><i class='fa fa-line-chart'></i> Daily Historical</a>"
+                      "<a class='w3-bar-item w3-button' href='/daily.html'><i class='fa fa-line-chart'></i> Daily</a>"
                       "<a class='w3-bar-item w3-button' href='/configure'><i class='fa fa-cog'></i> Configure</a>"
                       "<a class='w3-bar-item w3-button' href='/configureweather'><i class='fa fa-cloud'></i> Weather</a>"
                       "<a class='w3-bar-item w3-button' href='/systemreset' onclick='return confirm(\"Do you want to reset to default settings?\")'><i class='fa fa-undo'></i> Reset Settings</a>"
@@ -340,8 +340,8 @@ void setup() {
         server.onNotFound(handleWebRequests); //Set setver all paths are not found so we can handle as per URI
         server.on("/readquality", handle_quality); //This page is called by java Script AJAX
         server.on("/readdaily", handle_daily); //This page is called by java Script AJAX
- 
-  
+
+
         serverUpdater.setup(&server, "/update", www_username, www_password);
         // Start the server
         server.begin();
@@ -571,7 +571,7 @@ void loop() {
 
     }
 
-    checkDisplay(); 
+    checkDisplay();
 
     ui.update();
 
@@ -1560,7 +1560,7 @@ void handleWebRequests(){
 bool loadFromSpiffs(String path){
   String dataType = "text/plain";
   if(path.endsWith("/")) path += "index.htm";
- 
+
   if(path.endsWith(".src")) path = path.substring(0, path.lastIndexOf("."));
   else if(path.endsWith(".html")) dataType = "text/html";
   else if(path.endsWith(".htm")) dataType = "text/html";
@@ -1577,7 +1577,7 @@ bool loadFromSpiffs(String path){
   if (server.hasArg("download")) dataType = "application/octet-stream";
   if (server.streamFile(dataFile, dataType) != dataFile.size()) {
   }
- 
+
   dataFile.close();
   return true;
 }
@@ -1590,8 +1590,10 @@ void handle_quality() {
     struct sps30_measurement* m = &data_sample.m;
 
     String quality = String(m->mc_1p0) + "," + String(m->mc_2p5 - m->mc_1p0) +
-                      "," + String(m->mc_4p0 - m->mc_2p5) + "," +
-                      String(m->mc_10p0 - m->mc_4p0) + "," + String(volts);
+                     "," + String(m->mc_4p0 - m->mc_2p5) + "," +
+                     String(m->mc_10p0 - m->mc_4p0) + "," +
+                     String(data_sample.TVOC) + "," +
+                     String(data_sample.CO2eq) + "," + String(volts);
     server.send(200,
                 "text/plain",
                 quality); // Send air quality data to client ajax request
@@ -1629,6 +1631,8 @@ void handle_daily() {
         full = "," + String(m->mc_1p0) + "," + String(m->mc_2p5 - m->mc_1p0) +
                "," + String(m->mc_4p0 - m->mc_2p5) + "," +
                String(m->mc_10p0 - m->mc_4p0) + "," +
+               String(sample[0].data.TVOC) + "," +
+               String(sample[0].data.CO2eq) + "," +
                String(sample[0].data.volts) + "," +
                String(sample[0].timestampUTC);
 
@@ -1638,4 +1642,3 @@ void handle_daily() {
         row++; /* get the next row */
     }
 }
-
