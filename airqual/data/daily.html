@@ -235,7 +235,7 @@
                     var i;
                     for (i = 0; i < count; i++) {
                         var base = 1+i*8;
-                        var time = new Date(vals[base+5]*1000).toLocaleTimeString();
+                        var time = new Date(vals[base+7]*1000).toLocaleTimeString();
                         pm1.push(vals[base]);
                         pm2p5.push(vals[base+1]);
                         pm4.push(vals[base+2]);
@@ -250,7 +250,7 @@
                     var table = document.getElementById("dataTable");
                     for (i = 0; i < count; i++) {
                         var base = 1+ i * 8 ;
-                        var time = new Date(vals[base + 5]*1000).toLocaleTimeString();
+                        var time = new Date(vals[base + 7]*1000).toLocaleTimeString();
                         var row = table.insertRow(1);	//Add after headings
                         var cell1 = row.insertCell(0);
                         var cell2 = row.insertCell(1);

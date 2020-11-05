@@ -24,6 +24,8 @@
         "random": "cpp",
         "*.inc": "cpp",
         "*.tcc": "cpp",
-        "memory": "cpp"
-    }
+        "memory": "cpp",
+        "ostream": "cpp"
+    },
+    "esp8266fs.logLevel": "debug",
 }

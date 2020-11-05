@@ -89,7 +89,8 @@ SOFTWARE.
 OLEDDisplayUi   ui( &display );
 
 /* create the logger */
-SPIFFSLogger<data_sample_t> logger("/log/mydata",1);
+SPIFFSLogger<data_sample_t> logger("/log/mydata",2); /* keep two days */
+SPIFFSLogger<data_sample_t> hist_logger("/log/myhisdata",365); /* keep a year */
 
 void drawProgress(OLEDDisplay *display, int percentage, String label);
 void drawOtaProgress(unsigned int, unsigned int);
@@ -133,6 +134,7 @@ ESP8266HTTPUpdateServer serverUpdater;
 String WEB_ACTIONS =  "<a class='w3-bar-item w3-button' href='/'><i class='fa fa-home'></i> Home</a>"
                       "<a class='w3-bar-item w3-button' href='/index.html'><i class='fa fa-area-chart'></i> Real Time</a>"
                       "<a class='w3-bar-item w3-button' href='/daily.html'><i class='fa fa-line-chart'></i> Daily</a>"
+                      "<a class='w3-bar-item w3-button' href='/hist.html'><i class='fa fa-calendar-o'></i> Historical</a>"                      
                       "<a class='w3-bar-item w3-button' href='/configure'><i class='fa fa-cog'></i> Configure</a>"
                       "<a class='w3-bar-item w3-button' href='/configureweather'><i class='fa fa-cloud'></i> Weather</a>"
                       "<a class='w3-bar-item w3-button' href='/systemreset' onclick='return confirm(\"Do you want to reset to default settings?\")'><i class='fa fa-undo'></i> Reset Settings</a>"
@@ -340,6 +342,7 @@ void setup() {
         server.onNotFound(handleWebRequests); //Set setver all paths are not found so we can handle as per URI
         server.on("/readquality", handle_quality); //This page is called by java Script AJAX
         server.on("/readdaily", handle_daily); //This page is called by java Script AJAX
+        server.on("/readhist", handle_historical); //This page is called by java Script AJAX
 
 
         serverUpdater.setup(&server, "/update", www_username, www_password);
@@ -425,6 +428,7 @@ void setup() {
     configTime(0, 0, "pool.ntp.org");
 
     logger.init();
+    hist_logger.init();
     /*  our data record size: 52 bytes*/
     Serial.printf("sizeof(data_sample_t): %zu\n", sizeof(data_sample_t));
     /* time_t timestamp + our data, as stored in SPIFFS: 56 bytes */
@@ -449,6 +453,7 @@ void loop() {
     /* do the logging stuff, required */
 //    Serial.printf("******** Calling process!");
     logger.process();
+    hist_logger.process();
 
     if (lastMinute != timeClient.getMinutes()) {
         // Check status every 60 seconds
@@ -564,6 +569,11 @@ void loop() {
         data_sample.volts = volts;
         const time_t now  = time(nullptr);
         logger.write(data_sample);
+        
+        /* write our historical sample every hour */
+        if (timeClient.getMinutes() == "00"){
+            hist_logger.write(data_sample);
+        }
 
         size_t row_count = logger.rowCount(now);
         Serial.printf("Number of rows is now %zu\n", row_count);
@@ -674,89 +684,91 @@ uint8_t iicRdVOC(uint8_t addr, uint8_t numbytes) {// data is returned in global 
   return(reslt);
 }
 
-void setbaseline(void) {// uses data from global array flt[]
-  Wire.setClock(100000L);               // all Sensrion devices use iic ant 100KHz max!
-  Wire.beginTransmission(0x58);         // transmit set baseline to device 0x58, VOC detector
-  Wire.write(byte(0x20));               // sends command to set baseline
-  Wire.write(byte(0x1e));               // sends command to set baseline
-  Wire.write(byte(flt[0]));             // sends msb high word
-  Wire.write(byte(flt[1]));             // sends lsb high word
-  data[0]=flt[0];data[1]=flt[1];
-  reslt=CalcCrc(data);
-  Wire.write(byte(reslt));              // sends crc
-  Wire.write(byte(flt[2]));             // sends msb low word
-  Wire.write(byte(flt[3]));             // sends las low word
-  data[0]=flt[2];data[1]=flt[3];
-  reslt=CalcCrc(data);
-  Wire.write(byte(reslt));              // sends crc
-  Wire.endTransmission();               // stop transmitting
+void setbaseline(void) {    // uses data from global array flt[]
+    Wire.setClock(100000L); // all Sensrion devices use iic ant 100KHz max!
+    Wire.beginTransmission(
+        0x58); // transmit set baseline to device 0x58, VOC detector
+    Wire.write(byte(0x20));   // sends command to set baseline
+    Wire.write(byte(0x1e));   // sends command to set baseline
+    Wire.write(byte(flt[0])); // sends msb high word
+    Wire.write(byte(flt[1])); // sends lsb high word
+    data[0] = flt[0];
+    data[1] = flt[1];
+    reslt   = CalcCrc(data);
+    Wire.write(byte(reslt));  // sends crc
+    Wire.write(byte(flt[2])); // sends msb low word
+    Wire.write(byte(flt[3])); // sends las low word
+    data[0] = flt[2];
+    data[1] = flt[3];
+    reslt   = CalcCrc(data);
+    Wire.write(byte(reslt)); // sends crc
+    Wire.endTransmission();  // stop transmitting
 }
 
-void sethumidity(void){// uses data from global array flt[]
-  Wire.setClock(100000L);             // all Sensrion devices use iic ant 100KHz max!
-  Wire.beginTransmission(0x58);       // transmit set humidity to device 0x58, VOC detector
-  Wire.write(byte(0x20));             // sends command to set humidity
-  Wire.write(byte(0x61));             // sends command to set humidity
-  Wire.write(byte(flt[0]));           // sends msb high word
-  Wire.write(byte(flt[1]));           // sends lsb low word
-  data[0]=flt[0];data[1]=flt[1];
-  reslt=CalcCrc(data);
-  Wire.write(byte(reslt));            // sends crc
-  Wire.endTransmission();             // stop transmitting
-  Serial.println("set humidity");
+void sethumidity(void) {    // uses data from global array flt[]
+    Wire.setClock(100000L); // all Sensrion devices use iic ant 100KHz max!
+    Wire.beginTransmission(
+        0x58); // transmit set humidity to device 0x58, VOC detector
+    Wire.write(byte(0x20));   // sends command to set humidity
+    Wire.write(byte(0x61));   // sends command to set humidity
+    Wire.write(byte(flt[0])); // sends msb high word
+    Wire.write(byte(flt[1])); // sends lsb low word
+    data[0] = flt[0];
+    data[1] = flt[1];
+    reslt   = CalcCrc(data);
+    Wire.write(byte(reslt)); // sends crc
+    Wire.endTransmission();  // stop transmitting
+    Serial.println("set humidity");
 }
 //dv
 
 void getUpdateTime() {
-  digitalWrite(externalLight, LOW); // turn on the LED
-  Serial.println();
+    digitalWrite(externalLight, LOW); // turn on the LED
+    Serial.println();
 
-  if (displayOn && DISPLAYWEATHER) {
-    Serial.println("Getting Weather Data...");
-    weatherClient.updateWeather();
-  }
+    if (displayOn && DISPLAYWEATHER) {
+        Serial.println("Getting Weather Data...");
+        weatherClient.updateWeather();
+    }
 
-  Serial.println("Updating Time...");
-  //Update the Time
-  timeClient.updateTime();
-  lastEpoch = timeClient.getCurrentEpoch();
-  Serial.println("Local time: " + timeClient.getAmPmFormattedTime());
+    Serial.println("Updating Time...");
+    // Update the Time
+    timeClient.updateTime();
+    lastEpoch = timeClient.getCurrentEpoch();
+    Serial.println("Local time: " + timeClient.getAmPmFormattedTime());
 
-  digitalWrite(externalLight, HIGH);  // turn off the LED
+    digitalWrite(externalLight, HIGH); // turn off the LED
 }
 
 boolean authentication() {
-  if (IS_BASIC_AUTH && (strlen(www_username) >= 1 && strlen(www_password) >= 1)) {
-    return server.authenticate(www_username, www_password);
-  }
-  return true; // Authentication not required
+    if (IS_BASIC_AUTH &&
+        (strlen(www_username) >= 1 && strlen(www_password) >= 1)) {
+        return server.authenticate(www_username, www_password);
+    }
+    return true; // Authentication not required
 }
 
 void handleSystemReset() {
-  if (!authentication()) {
-    return server.requestAuthentication();
-  }
-  Serial.println("Reset System Configuration");
-  if (SPIFFS.remove(CONFIG)) {
-    redirectHome();
-    ESP.restart();
-  }
+    if (!authentication()) { return server.requestAuthentication(); }
+    Serial.println("Reset System Configuration");
+    if (SPIFFS.remove(CONFIG)) {
+        redirectHome();
+        ESP.restart();
+    }
 }
 
 void handleUpdateWeather() {
-  if (!authentication()) {
-    return server.requestAuthentication();
-  }
-  DISPLAYWEATHER = server.hasArg("isWeatherEnabled");
-  WeatherApiKey = server.arg("openWeatherMapApiKey");
-  CityIDs[0] = server.arg("city1").toInt();
-  IS_METRIC = server.hasArg("metric");
-  WeatherLanguage = server.arg("language");
-  writeSettings();
-  isClockOn = false; // this will force a check for the display
-  checkDisplay();
-  lastEpoch = 0;
-  redirectHome();
+    if (!authentication()) { return server.requestAuthentication(); }
+    DISPLAYWEATHER  = server.hasArg("isWeatherEnabled");
+    WeatherApiKey   = server.arg("openWeatherMapApiKey");
+    CityIDs[0]      = server.arg("city1").toInt();
+    IS_METRIC       = server.hasArg("metric");
+    WeatherLanguage = server.arg("language");
+    writeSettings();
+    isClockOn = false; // this will force a check for the display
+    checkDisplay();
+    lastEpoch = 0;
+    redirectHome();
 }
 
 void handleUpdateConfig() {
@@ -774,14 +786,13 @@ void handleUpdateConfig() {
     temp.toCharArray(www_password, sizeof(temp));
     writeSettings();
     if (INVERT_DISPLAY != flipOld) {
-    ui.init();
-    if(INVERT_DISPLAY)
-      display.flipScreenVertically();
-    ui.update();
-  }
-  checkDisplay();
-  lastEpoch = 0;
-  redirectHome();
+        ui.init();
+        if (INVERT_DISPLAY) display.flipScreenVertically();
+        ui.update();
+    }
+    checkDisplay();
+    lastEpoch = 0;
+    redirectHome();
 }
 
 void handleWifiReset() {
@@ -1599,9 +1610,8 @@ void handle_quality() {
                 quality); // Send air quality data to client ajax request
 }
 
-/* This has turned into a big hack.  We send the whole data set on this request,
+/* Send the whole data set on this request,
  * and we do it incrementally */
-
 void handle_daily() {
     int                                 i = 0;
     struct SPIFFSLogData<data_sample_t> sample[5]; /* just one sample at a time */
@@ -1617,12 +1627,10 @@ void handle_daily() {
 
     /* send the speculative header */
     server.setContentLength(CONTENT_LENGTH_UNKNOWN);
-//    server.sendHeader("Content-Length", "10000");
     server.send(200, "text/plain", "\r\n");
 
     String full = String(row_count);
     server.sendContent(full);
-    buff_to_fill -= full.length();
 
     /* get the raw data */
     while (logger.readRows(sample, now, row, 1) && (row < row_count)) {
@@ -1638,7 +1646,87 @@ void handle_daily() {
 
         //Serial.println("String is " + full + "\n");
         server.sendContent(full);
-        buff_to_fill -= full.length();
         row++; /* get the next row */
+    }
+}
+/* Send the whole data set on this request,
+ * and we do it incrementally */
+
+struct SPIFFSLogData<data_sample_t> h_sample[24]; 
+
+void handle_historical() {
+    int                                 i = 0;
+    struct SPIFFSLogData<data_sample_t> sample[5]; /* just one sample at a time */
+    const time_t                        now       = time(nullptr);
+    size_t                              row_count = 0;
+    struct sps30_measurement*           m            = &sample[0].data.m;
+    size_t                              buff_to_fill = row_count * 60;
+    /* this is how we parse args --    int start =
+     * atoi(server.arg("start").c_str()); */
+
+    /* lets just go back a week to start */
+    /* we'll do two pases */
+     
+    {
+        time_t start = now + -7 * 60 * 60 * 24;
+        time_t end   = now;
+        row_count +=
+            hist_logger
+                .readRowsBetween(h_sample, // output
+                                 start,
+                                 end, // time end (inclusive)
+                                 0,   // start index
+                                 24); // max number of rows to fetch
+        Serial.printf("Whole count = %d\n", row_count);
+    }
+    row_count = 0;
+    for (i = -7; i < 0; i++) {
+        time_t start = now + i * 60 * 60 * 24;
+        time_t end   = start + 60 * 60 * 24;
+        row_count +=
+            hist_logger
+                .readRowsBetween(h_sample, // output
+                                 start,
+                                 end, // time end (inclusive)
+                                 0,   // start index
+                                 24); // max number of rows to fetch
+        Serial.printf("Day (%d) total count %d\n", i, row_count);
+    }
+
+    /* send the speculative header */
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/plain", "\r\n");
+
+    String full = String(row_count);
+    server.sendContent(full);
+
+    for (i = -7; i < 0; i++) {
+        /* get the raw data */
+        time_t start = now + i * 60 * 60 * 24;
+        time_t end   = start + 60 * 60 * 24;
+        size_t row   = 0;
+        size_t day_count =
+            hist_logger.readRowsBetween(h_sample, start, end, 0, 24);
+
+        Serial.printf("Day (%d) samples %d\n", i, day_count);
+        while (row < day_count) {
+            size_t count = hist_logger.readRowsBetween(h_sample, start, end, row, 1);
+            if (count < 1) break;
+
+            m = &h_sample[0].data.m;
+            // Serial.printf("Read back row %zu\n", row);
+            full = "," + String(m->mc_1p0) + "," +
+                   String(m->mc_2p5 - m->mc_1p0) + "," +
+                   String(m->mc_4p0 - m->mc_2p5) + "," +
+                   String(m->mc_10p0 - m->mc_4p0) + "," +
+                   String(h_sample[0].data.TVOC) + "," +
+                   String(h_sample[0].data.CO2eq) + "," +
+                   String(h_sample[0].data.volts) + "," +
+                   String(h_sample[0].timestampUTC);
+
+            Serial.println("String is " + full + "\n");
+            server.sendContent(full);
+            row++; /* get the next row */
+        }
     }
 }
