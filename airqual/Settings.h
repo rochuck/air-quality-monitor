@@ -47,6 +47,10 @@ SOFTWARE.
 #include <SPIFFSLogger.h>
 #include <time.h>
 
+/* constants */
+#define SECS_IN_DAY 60*60*24
+#define DAYS_IN_WEEK 7
+#define DAYS_IN_YEAR 365
 
 //******************************
 // Start Settings
@@ -100,8 +104,8 @@ typedef struct {
     struct sps30_measurement m; /* for sps30 data */
     float                    tempC;
     float                    RH;
-    uint16_t                 TVOC;  //
-    uint16_t                 CO2eq; //
+    uint16_t                 TVOC;  
+    uint16_t                 CO2eq; 
     float                    volts;
 } data_sample_t;
 

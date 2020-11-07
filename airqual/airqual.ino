@@ -134,7 +134,8 @@ ESP8266HTTPUpdateServer serverUpdater;
 String WEB_ACTIONS =  "<a class='w3-bar-item w3-button' href='/'><i class='fa fa-home'></i> Home</a>"
                       "<a class='w3-bar-item w3-button' href='/index.html'><i class='fa fa-area-chart'></i> Real Time</a>"
                       "<a class='w3-bar-item w3-button' href='/daily.html'><i class='fa fa-line-chart'></i> Daily</a>"
-                      "<a class='w3-bar-item w3-button' href='/hist.html'><i class='fa fa-calendar-o'></i> Historical</a>"                      
+                      "<a class='w3-bar-item w3-button' href='/week.html'><i class='fa fa-calendar-o'></i> Last Week</a>"                      
+                      "<a class='w3-bar-item w3-button' href='/year.html'><i class='fa fa-birthday-cake'></i> Last Year</a>"                      
                       "<a class='w3-bar-item w3-button' href='/configure'><i class='fa fa-cog'></i> Configure</a>"
                       "<a class='w3-bar-item w3-button' href='/configureweather'><i class='fa fa-cloud'></i> Weather</a>"
                       "<a class='w3-bar-item w3-button' href='/systemreset' onclick='return confirm(\"Do you want to reset to default settings?\")'><i class='fa fa-undo'></i> Reset Settings</a>"
@@ -342,7 +343,8 @@ void setup() {
         server.onNotFound(handleWebRequests); //Set setver all paths are not found so we can handle as per URI
         server.on("/readquality", handle_quality); //This page is called by java Script AJAX
         server.on("/readdaily", handle_daily); //This page is called by java Script AJAX
-        server.on("/readhist", handle_historical); //This page is called by java Script AJAX
+        server.on("/readweek", handle_weeks_data); //This page is called by java Script AJAX
+        server.on("/readyear", handle_years_data); //This page is called by java Script AJAX
 
 
         serverUpdater.setup(&server, "/update", www_username, www_password);
@@ -1649,47 +1651,23 @@ void handle_daily() {
         row++; /* get the next row */
     }
 }
-/* Send the whole data set on this request,
+/* Send the last week's data data set on this request,
  * and we do it incrementally */
-
-struct SPIFFSLogData<data_sample_t> h_sample[24]; 
-
-void handle_historical() {
-    int                                 i = 0;
-    struct SPIFFSLogData<data_sample_t> sample[5]; /* just one sample at a time */
-    const time_t                        now       = time(nullptr);
-    size_t                              row_count = 0;
-    struct sps30_measurement*           m            = &sample[0].data.m;
-    size_t                              buff_to_fill = row_count * 60;
+void handle_weeks_data() {
+    struct SPIFFSLogData<data_sample_t> h_sample[5]; /* just one sample at a time */
+    int                       i            = 0;
+    const time_t              now          = time(nullptr);
+    size_t                    row_count    = 0;
+    struct sps30_measurement* m            = &h_sample[0].data.m;
+    size_t                    buff_to_fill = row_count * 60;
     /* this is how we parse args --    int start =
      * atoi(server.arg("start").c_str()); */
 
-    /* lets just go back a week to start */
-    /* we'll do two pases */
-     
-    {
-        time_t start = now + -7 * 60 * 60 * 24;
-        time_t end   = now;
-        row_count +=
-            hist_logger
-                .readRowsBetween(h_sample, // output
-                                 start,
-                                 end, // time end (inclusive)
-                                 0,   // start index
-                                 24); // max number of rows to fetch
-        Serial.printf("Whole count = %d\n", row_count);
-    }
     row_count = 0;
-    for (i = -7; i < 0; i++) {
-        time_t start = now + i * 60 * 60 * 24;
-        time_t end   = start + 60 * 60 * 24;
-        row_count +=
-            hist_logger
-                .readRowsBetween(h_sample, // output
-                                 start,
-                                 end, // time end (inclusive)
-                                 0,   // start index
-                                 24); // max number of rows to fetch
+    for (i = -DAYS_IN_WEEK; i <= 0; i++) {
+        time_t start = now + i * SECS_IN_DAY;
+        row_count += hist_logger.rowCount(start);
+        /* this should give the count for the day */
         Serial.printf("Day (%d) total count %d\n", i, row_count);
     }
 
@@ -1700,20 +1678,17 @@ void handle_historical() {
     String full = String(row_count);
     server.sendContent(full);
 
-    for (i = -7; i < 0; i++) {
+    for (i = -DAYS_IN_WEEK; i <= 0; i++) {
         /* get the raw data */
-        time_t start = now + i * 60 * 60 * 24;
-        time_t end   = start + 60 * 60 * 24;
-        size_t row   = 0;
-        size_t day_count =
-            hist_logger.readRowsBetween(h_sample, start, end, 0, 24);
+        time_t start = now + i * SECS_IN_DAY;
+        size_t row       = 0;
+        size_t day_count = hist_logger.rowCount(start);
 
         Serial.printf("Day (%d) samples %d\n", i, day_count);
-        while (row < day_count) {
-            size_t count = hist_logger.readRowsBetween(h_sample, start, end, row, 1);
-            if (count < 1) break;
 
-            m = &h_sample[0].data.m;
+        /* get the raw data */
+        while (hist_logger.readRows(h_sample, start, row, 1) && (row < day_count)) {
+
             // Serial.printf("Read back row %zu\n", row);
             full = "," + String(m->mc_1p0) + "," +
                    String(m->mc_2p5 - m->mc_1p0) + "," +
@@ -1724,7 +1699,63 @@ void handle_historical() {
                    String(h_sample[0].data.volts) + "," +
                    String(h_sample[0].timestampUTC);
 
-            Serial.println("String is " + full + "\n");
+            // Serial.println("String is " + full + "\n");
+            server.sendContent(full);
+            row++; /* get the next row */
+        }
+    }
+}
+
+/* Send the last week's data data set on this request,
+ * and we do it incrementally */
+void handle_years_data() {
+    struct SPIFFSLogData<data_sample_t> h_sample[5]; /* just one sample at a time */
+    int                       i            = 0;
+    const time_t              now          = time(nullptr);
+    size_t                    row_count    = 0;
+    struct sps30_measurement* m            = &h_sample[0].data.m;
+    size_t                    buff_to_fill = row_count * 60;
+    /* this is how we parse args --    int start =
+     * atoi(server.arg("start").c_str()); */
+
+    row_count = 0;
+    for (i = -DAYS_IN_YEAR; i <= 0; i++) {
+        time_t start = now + i * SECS_IN_DAY;
+        row_count += (hist_logger.rowCount(start) > 0) ? 1 : 0;
+        /* this should give the count for the day */
+//        Serial.printf("Day (%d) total count %d\n", i, row_count);
+    }
+
+    /* send the speculative header */
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/plain", "\r\n");
+
+    String full = String(row_count);
+    server.sendContent(full);
+
+    for (i = -DAYS_IN_YEAR; i <= 0; i++) {
+        /* get the raw data */
+        time_t start = now + i * SECS_IN_DAY;
+        size_t row       = 0;
+        size_t day_count = hist_logger.rowCount(start);
+
+//
+        Serial.printf("Day (%d) samples %d\n", i, day_count);
+
+        /* get the raw data */
+        if ((day_count > 0) && (hist_logger.readRows(h_sample, start, row, 1))) {
+
+            // Serial.printf("Read back row %zu\n", row);
+            full = "," + String(m->mc_1p0) + "," +
+                   String(m->mc_2p5 - m->mc_1p0) + "," +
+                   String(m->mc_4p0 - m->mc_2p5) + "," +
+                   String(m->mc_10p0 - m->mc_4p0) + "," +
+                   String(h_sample[0].data.TVOC) + "," +
+                   String(h_sample[0].data.CO2eq) + "," +
+                   String(h_sample[0].data.volts) + "," +
+                   String(h_sample[0].timestampUTC);
+
+            // Serial.println("String is " + full + "\n");
             server.sendContent(full);
             row++; /* get the next row */
         }
