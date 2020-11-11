@@ -799,6 +799,8 @@ void handleUpdateConfig() {
     themeColor                = server.arg("theme");
     UtcOffset                 = server.arg("utcoffset").toFloat();
     String temp               = server.arg("userid");
+    alarm_high                = server.arg("himcalarm").toFloat();
+    alarm_low                 = server.arg("lomcalarm").toFloat();
     temp.toCharArray(www_username, sizeof(temp));
     temp = server.arg("stationpassword");
     temp.toCharArray(www_password, sizeof(temp));
@@ -1398,6 +1400,8 @@ void writeSettings() {
     f.println("CityID=" + String(CityIDs[0]));
     f.println("isMetric=" + String(IS_METRIC));
     f.println("language=" + String(WeatherLanguage));
+    f.println("himcalarm" + String(alarm_high));
+    f.println("lomcalarm=" + String(alarm_low));
   }
   f.close();
   readSettings();
@@ -1414,6 +1418,17 @@ void readSettings() {
     String line;
     while (fr.available()) {
         line = fr.readStringUntil('\n');
+
+        if (line.indexOf("himcalarm=") >= 0) {
+            alarm_high =
+                line.substring(line.lastIndexOf("himcalarm=") + 10).toFloat();
+            Serial.println("himcalarm=" + String(UtcOffset));
+        }
+        if (line.indexOf("lomcalarm=") >= 0) {
+            alarm_low =
+                line.substring(line.lastIndexOf("lomcalarm=") + 10).toFloat();
+            Serial.println("lomcalarm=" + String(UtcOffset));
+        }
 
         if (line.indexOf("UtcOffset=") >= 0) {
             UtcOffset =
