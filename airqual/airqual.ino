@@ -61,10 +61,11 @@ SOFTWARE.
  /***********************************************
  * Edit Settings.h for personalization
  ***********************************************/
+#include <GDBStub.h>
 #include "Settings.h"
 #include <EEPROM.h>
 
-#define VERSION "1.0.0"
+#define VERSION "2.0.0"
 
 #define HOSTNAME "AirQual-"
 #define CONFIG "/conf.txt"
@@ -88,15 +89,18 @@ SOFTWARE.
 
 OLEDDisplayUi   ui( &display );
 
+/* Alarm data */
+uint16_t alarm_low    = 10; /* 10 uG/m^3 default */
+uint16_t alarm_high   = 100;
+bool     alarm_enable = false;
+
 /* create the logger */
 SPIFFSLogger<data_sample_t> logger("/log/mydata",2); /* keep two days */
 SPIFFSLogger<data_sample_t> hist_logger("/log/myhisdata",365); /* keep a year */
+FSInfo fs_info;
 
 void drawProgress(OLEDDisplay *display, int percentage, String label);
 void drawOtaProgress(unsigned int, unsigned int);
-void drawScreen1(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
-void drawScreen2(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
-void drawScreen3(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void drawHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state);
 void drawTinyAQ(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
 void drawPM05(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y);
@@ -116,13 +120,12 @@ int numberOfOverlays = 1;
 
 // Time
 TimeClient timeClient(UtcOffset);
-long lastEpoch = 0;
-long firstEpoch = 0;
-long displayOffEpoch = 0;
-String lastMinute = "xx";
-String lastSecond = "xx";
-String lastReportStatus = "";
-boolean displayOn = true;
+long       lastEpoch        = 0;
+long       firstEpoch       = 0;
+long       displayOffEpoch  = 0;
+String     lastMinute       = "xx";
+String     lastSecond       = "xx";
+String     lastReportStatus = "";
 
 OpenWeatherMapClient weatherClient(WeatherApiKey, CityIDs, 1, IS_METRIC, WeatherLanguage);
 void configModeCallback (WiFiManager *myWiFiManager);
@@ -144,10 +147,14 @@ String WEB_ACTIONS =  "<a class='w3-bar-item w3-button' href='/'><i class='fa fa
                       "<a class='w3-bar-item w3-button' href='https://github.com/rochuck' target='_blank'><i class='fa fa-question-circle'></i> About</a>";
 
 String CHANGE_FORM =  "<form class='w3-container' action='/updateconfig' method='get'><h2>Configuration:</h2>"
-                      "<p><input name='isClockEnabled' class='w3-check w3-margin-top' type='checkbox' %IS_CLOCK_CHECKED%> Display Clock</p>"
                       "<p><input name='is24hour' class='w3-check w3-margin-top' type='checkbox' %IS_24HOUR_CHECKED%> Use 24 Hour Clock (military time)</p>"
                       "<p><input name='invDisp' class='w3-check w3-margin-top' type='checkbox' %IS_INVDISP_CHECKED%> Flip display orientation</p>"
                       "<p>Clock Sync / Weather Refresh (minutes) <select class='w3-option w3-padding' name='refresh'>%OPTIONS%</select></p>";
+
+String ALARM_FORM =   "<hr>"
+                      "<p><label>Low Particle alarm</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='lomcalarm' value='%LOMCALARM%' maxlength='6'></p>"
+                      "<p><label>High Particle alarm</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='himcalarm' value='%HIMCALARM%' maxlength='6'></p>"                      
+                      "<hr>";
 
 String THEME_FORM =   "<p>Theme Color <select class='w3-option w3-padding' name='theme'>%THEME_OPTIONS%</select></p>"
                       "<p><label>UTC Time Offset</label><input class='w3-input w3-border w3-margin-bottom' type='text' name='utcoffset' value='%UTCOFFSET%' maxlength='12'></p><hr>"
@@ -232,9 +239,12 @@ void setup() {
     Serial.begin(115200);
     SPIFFS.begin();
     delay(2000);
+    gdbstub_init();
 
-
-
+    /* boot beep :) */
+    pinMode(ALARM_PIN, OUTPUT);
+    sound_alarm(3,300,200);
+    
     // New Line to clear from start garbage
     Serial.println();
 
@@ -577,13 +587,21 @@ void loop() {
             hist_logger.write(data_sample);
         }
 
+        /* check if we need to alarm */
+        if (alarm_enable && data_sample.m.mc_10p0 > alarm_high){
+            sound_alarm(3,300,300);
+        } else if (alarm_enable && data_sample.m.mc_10p0 > alarm_low){
+             sound_alarm(1,200,0);
+        } else {
+            alarm_enable = true;
+        }
+
         size_t row_count = logger.rowCount(now);
         Serial.printf("Number of rows is now %zu\n", row_count);
-     //   Serial.printf("Spiffs total %d, used %d\n", SPIFFS.totalBytes(), SPIFFS.usedBytes());
+        SPIFFS.info(fs_info);
+        Serial.printf("Spiffs total %d, used %d\n", fs_info.totalBytes, fs_info.usedBytes);
 
     }
-
-    checkDisplay();
 
     ui.update();
 
@@ -615,8 +633,8 @@ void starttemprh(void){ // starts sensirion SVM30 temperature measurements
   Wire.write(byte(0x78));             // sends command to start measurement (read temp first)
   Wire.write(byte(0x66));             // sends command to start measurement
   data[0]=0x78;data[1]=0x66;
-  reslt=CalcCrc(data);
-  Wire.write(byte(reslt));            // sends chk
+  result=CalcCrc(data);
+  Wire.write(byte(result));            // sends chk
   Wire.endTransmission();             // stop transmitting
 }
 
@@ -630,8 +648,8 @@ void readtemprh(void){ // read sensirion SVM30 temperature and humidity measurem
     }
   }
   for(tmp=0;tmp<2;tmp++){                // for 2 crc protected data pairs (6bytes)
-    for(reslt=0;reslt<3;reslt++){        // read 2 bytes data and crc
-      flt[reslt]=data[(tmp*3)+reslt];
+    for(result=0;result<3;result++){        // read 2 bytes data and crc
+      flt[result]=data[(tmp*3)+result];
     }
     if(CalcCrc(flt)!=flt[2]) ret = true; // crc fail
   }
@@ -657,8 +675,8 @@ void iicWr2byteandcrc(uint8_t addr, uint8_t hibyte, uint8_t lobyte) {
   Wire.write(byte(hibyte));             // sends command byte
   Wire.write(byte(lobyte));             // sends dummy byte
   data[0]=hibyte;data[1]=lobyte;
-  reslt=CalcCrc(data);
-  Wire.write(byte(reslt));            // sends chk
+  result=CalcCrc(data);
+  Wire.write(byte(result));            // sends chk
   Wire.endTransmission();             // stop transmitting
 }
 
@@ -670,20 +688,20 @@ uint8_t iicRdVOC(uint8_t addr, uint8_t numbytes) {// data is returned in global 
   }
   // need to crc check rx'd byte pairs, 20 readings of 2 bytes plus crc byte, compute and build crc chk array
   for(tmp=0;tmp<(numbytes/3);tmp++){     // for numbytes crc protected data pairs
-    for(reslt=0;reslt<3;reslt++){        // read 2 bytes data and crc
-      flt[reslt]=data[(tmp*3)+reslt];    // flt[] used as temp storage
+    for(result=0;result<3;result++){        // read 2 bytes data and crc
+      flt[result]=data[(tmp*3)+result];    // flt[] used as temp storage
     }
     if(CalcCrc(flt)==flt[2]) chk[tmp]=1; // crc pass
     else chk[tmp]=0;                     // crc fail
   }
-  reslt=0;
+  result=0;
   for(tmp=0;tmp<(numbytes/3);tmp++) {
-    if(chk[tmp]==0) reslt=1;             // one or mor crc's fail
+    if(chk[tmp]==0) result=1;             // one or mor crc's fail
     if(chk[tmp]==0) {
 //      Serial.print(tmp);Serial.print(" fail\n\r");
     }
   }
-  return(reslt);
+  return(result);
 }
 
 void setbaseline(void) {    // uses data from global array flt[]
@@ -696,14 +714,14 @@ void setbaseline(void) {    // uses data from global array flt[]
     Wire.write(byte(flt[1])); // sends lsb high word
     data[0] = flt[0];
     data[1] = flt[1];
-    reslt   = CalcCrc(data);
-    Wire.write(byte(reslt));  // sends crc
+    result   = CalcCrc(data);
+    Wire.write(byte(result));  // sends crc
     Wire.write(byte(flt[2])); // sends msb low word
     Wire.write(byte(flt[3])); // sends las low word
     data[0] = flt[2];
     data[1] = flt[3];
-    reslt   = CalcCrc(data);
-    Wire.write(byte(reslt)); // sends crc
+    result   = CalcCrc(data);
+    Wire.write(byte(result)); // sends crc
     Wire.endTransmission();  // stop transmitting
 }
 
@@ -717,8 +735,8 @@ void sethumidity(void) {    // uses data from global array flt[]
     Wire.write(byte(flt[1])); // sends lsb low word
     data[0] = flt[0];
     data[1] = flt[1];
-    reslt   = CalcCrc(data);
-    Wire.write(byte(reslt)); // sends crc
+    result   = CalcCrc(data);
+    Wire.write(byte(result)); // sends crc
     Wire.endTransmission();  // stop transmitting
     Serial.println("set humidity");
 }
@@ -728,7 +746,7 @@ void getUpdateTime() {
     digitalWrite(externalLight, LOW); // turn on the LED
     Serial.println();
 
-    if (displayOn && DISPLAYWEATHER) {
+    if (DISPLAYWEATHER) {
         Serial.println("Getting Weather Data...");
         weatherClient.updateWeather();
     }
@@ -768,7 +786,6 @@ void handleUpdateWeather() {
     WeatherLanguage = server.arg("language");
     writeSettings();
     isClockOn = false; // this will force a check for the display
-    checkDisplay();
     lastEpoch = 0;
     redirectHome();
 }
@@ -776,7 +793,6 @@ void handleUpdateWeather() {
 void handleUpdateConfig() {
     boolean flipOld = INVERT_DISPLAY;
     if (!authentication()) { return server.requestAuthentication(); }
-    DISPLAYCLOCK              = server.hasArg("isClockEnabled");
     IS_24HOUR                 = server.hasArg("is24hour");
     INVERT_DISPLAY            = server.hasArg("invDisp");
     minutesBetweenDataRefresh = server.arg("refresh").toInt();
@@ -792,7 +808,6 @@ void handleUpdateConfig() {
         if (INVERT_DISPLAY) display.flipScreenVertically();
         ui.update();
     }
-    checkDisplay();
     lastEpoch = 0;
     redirectHome();
 }
@@ -861,9 +876,6 @@ void handleConfigure() {
 
     String form = CHANGE_FORM;
 
-    String isClockChecked = "";
-    if (DISPLAYCLOCK) { isClockChecked = "checked='checked'"; }
-    form.replace("%IS_CLOCK_CHECKED%", isClockChecked);
     String is24hourChecked = "";
     if (IS_24HOUR) { is24hourChecked = "checked='checked'"; }
     form.replace("%IS_24HOUR_CHECKED%", is24hourChecked);
@@ -878,6 +890,11 @@ void handleConfigure() {
                     " selected>" + String(minutesBetweenDataRefresh) + "<");
     form.replace("%OPTIONS%", options);
 
+    server.sendContent(form);
+
+    form = ALARM_FORM;
+    form.replace("%LOMCALARM%", String(alarm_low));
+    form.replace("%HIMCALARM%", String(alarm_high));
     server.sendContent(form);
 
     form = THEME_FORM;
@@ -997,6 +1014,15 @@ String getFooter() {
     html += "</footer>";
     html += "</body></html>";
     return html;
+}
+
+void sound_alarm(uint16_t count, uint16_t on_dur, uint16_t off_dur) {
+    for (int i = 0; i < count; i++) {
+        digitalWrite(ALARM_PIN, 1);
+        delay(on_dur);
+        digitalWrite(ALARM_PIN, 0);
+        delay(off_dur);
+    }
 }
 
 void display_air_quality() {
@@ -1127,48 +1153,6 @@ void flashLED(int number, int delayTime) {
       digitalWrite(externalLight, HIGH);
       delay(delayTime);
   }
-}
-
-void drawScreen1(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
-  display->setTextAlignment(TEXT_ALIGN_CENTER);
-  display->setFont(ArialMT_Plain_16);
-  display->drawString(64 + x, 0 + y, "Screen 1");
-}
-
-void drawScreen2(OLEDDisplay *display, OLEDDisplayUiState* state, int16_t x, int16_t y) {
-  display->setTextAlignment(TEXT_ALIGN_CENTER);
-  display->setFont(ArialMT_Plain_16);
-
-  display->drawString(64 + x, 0 + y, "Time Remaining");
-  //display->setTextAlignment(TEXT_ALIGN_LEFT);
-  display->setFont(ArialMT_Plain_24);
-  int val = 9999;
-  int hours = numberOfHours(val);
-  int minutes = numberOfMinutes(val);
-  int seconds = numberOfSeconds(val);
-
-  String time = zeroPad(hours) + ":" + zeroPad(minutes) + ":" + zeroPad(seconds);
-  display->drawString(64 + x, 14 + y, time);
-}
-
-void drawScreen3(OLEDDisplay*        display,
-                 OLEDDisplayUiState* state,
-                 int16_t             x,
-                 int16_t             y) {
-    display->setTextAlignment(TEXT_ALIGN_CENTER);
-    display->setFont(ArialMT_Plain_16);
-
-    display->drawString(64 + x, 0 + y, "Printing Time");
-    // display->setTextAlignment(TEXT_ALIGN_LEFT);
-    display->setFont(ArialMT_Plain_24);
-    int val     = 6666;
-    int hours   = numberOfHours(val);
-    int minutes = numberOfMinutes(val);
-    int seconds = numberOfSeconds(val);
-
-    String time =
-        zeroPad(hours) + ":" + zeroPad(minutes) + ":" + zeroPad(seconds);
-    display->drawString(64 + x, 14 + y, time);
 }
 
 void drawTinyAQ(OLEDDisplay*        display,
@@ -1354,6 +1338,8 @@ void drawHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state) {
 
   display->setFont(ArialMT_Plain_16);
   display->setTextAlignment(TEXT_ALIGN_LEFT);
+
+  /* CGR Put battery percentage here !!!! */
   String percent = String(50) + "%";
   display->drawString(64, 48, percent);
 
@@ -1405,7 +1391,6 @@ void writeSettings() {
     f.println("IS_BASIC_AUTH=" + String(IS_BASIC_AUTH));
     f.println("www_username=" + String(www_username));
     f.println("www_password=" + String(www_password));
-    f.println("DISPLAYCLOCK=" + String(DISPLAYCLOCK));
     f.println("is24hour=" + String(IS_24HOUR));
     f.println("invertDisp=" + String(INVERT_DISPLAY));
     f.println("isWeather=" + String(DISPLAYWEATHER));
@@ -1466,11 +1451,6 @@ void readSettings() {
             temp.toCharArray(www_password, sizeof(temp));
             Serial.println("www_password=" + String(www_password));
         }
-        if (line.indexOf("DISPLAYCLOCK=") >= 0) {
-            DISPLAYCLOCK =
-                line.substring(line.lastIndexOf("DISPLAYCLOCK=") + 13).toInt();
-            Serial.println("DISPLAYCLOCK=" + String(DISPLAYCLOCK));
-        }
         if (line.indexOf("is24hour=") >= 0) {
             IS_24HOUR =
                 line.substring(line.lastIndexOf("is24hour=") + 9).toInt();
@@ -1525,31 +1505,6 @@ int getMinutesFromLastRefresh() {
 int getMinutesFromLastDisplay() {
     int minutes = (timeClient.getCurrentEpoch() - displayOffEpoch) / 60;
     return minutes;
-}
-
-// Toggle on and off the display if user defined times
-void checkDisplay() {
-
-}
-
-void enableDisplay(boolean enable) {
-    displayOn = enable;
-    if (enable) {
-        if (getMinutesFromLastDisplay() >= minutesBetweenDataRefresh) {
-            // The display has been off longer than the minutes between refresh
-            // -- need to get fresh data
-            lastEpoch       = 0; // this should force a data pull
-            displayOffEpoch = 0; // reset
-        }
-        display.displayOn();
-        Serial.println("Display was turned ON: " +
-                       timeClient.getFormattedTime());
-    } else {
-        display.displayOff();
-        Serial.println("Display was turned OFF: " +
-                       timeClient.getFormattedTime());
-        displayOffEpoch = lastEpoch;
-    }
 }
 
 /* web logging code */

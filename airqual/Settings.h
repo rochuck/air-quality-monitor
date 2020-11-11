@@ -57,36 +57,46 @@ SOFTWARE.
 //******************************
 
 // Weather Configuration
-boolean DISPLAYWEATHER = true; // true = show weather when not printing / false = no weather
-String WeatherApiKey = ""; // Your API Key from http://openweathermap.org/
+boolean DISPLAYWEATHER = true; // true = show weather / false = no weather
+String  WeatherApiKey  = "";   // Your API Key from http://openweathermap.org/
 // Default City Location (use http://openweathermap.org/find to find city ID)
-int CityIDs[] = { 5304391 };
+int     CityIDs[] = {5304391};
 boolean IS_METRIC = false; // false = Imperial and true = Metric
-// Languages: ar, bg, ca, cz, de, el, en, fa, fi, fr, gl, hr, hu, it, ja, kr, la, lt, mk, nl, pl, pt, ro, ru, se, sk, sl, es, tr, ua, vi, zh_cn, zh_tw
-String WeatherLanguage = "en";  //Default (en) English
+// Languages: ar, bg, ca, cz, de, el, en, fa, fi, fr, gl, hr, hu, it, ja, kr,
+// la, lt, mk, nl, pl, pt, ro, ru, se, sk, sl, es, tr, ua, vi, zh_cn, zh_tw
+String WeatherLanguage = "en"; // Default (en) English
 
 // Webserver
-const int WEBSERVER_PORT = 80; // The port you can access this device on over HTTP
-const boolean WEBSERVER_ENABLED = true;  // Device will provide a web interface via http://[ip]:[port]/
-boolean IS_BASIC_AUTH = true;  // true = require athentication to change configuration settings / false = no auth
-char* www_username = "admin";  // User account for the Web Interface
-char* www_password = "password";  // Password for the Web Interface
+const int     WEBSERVER_PORT    = 80;
+const boolean WEBSERVER_ENABLED = true;
+boolean       IS_BASIC_AUTH = true; // true = require athentication to change
+                                    // configuration settings / false = no auth
+char* www_username = "admin";       // User account for the Web Interface
+char* www_password = "password";    // Password for the Web Interface
 
 // Date and Time
-float UtcOffset = -6; // Hour offset from GMT for your timezone
-boolean IS_24HOUR = false;     // 23:00 millitary 24 hour clock
-int minutesBetweenDataRefresh = 15;
-boolean DISPLAYCLOCK = true;   // true = Show Clock when not printing / false = turn off display when not printing
+float   UtcOffset = -6;    // Hour offset from GMT for your timezone
+boolean IS_24HOUR = false; // 23:00 millitary 24 hour clock
+int     minutesBetweenDataRefresh = 15;
+boolean DISPLAYCLOCK = true; // true = Show Clock when not printing / false =
+                             // turn off display when not printing
 
 // Display Settings
-const int I2C_DISPLAY_ADDRESS = 0x3c; // I2C Address of your Display (usually 0x3c or 0x3d)
-const int SDA_PIN = 4;
-const int SCL_PIN = 5;
-boolean INVERT_DISPLAY = true; // true = pins at top | false = pins at the bottom
-//#define DISPLAY_SH1106       // Uncomment this line to use the SH1106 display -- SSD1306 is used by default and is most common
+// I2C Address of your Display(usually 0x3c or 0x3d)
+const int I2C_DISPLAY_ADDRESS = 0x3c;
+const int SDA_PIN             = 4;
+const int SCL_PIN             = 5;
+// true = pins at top | false = pins at the bottom
+boolean INVERT_DISPLAY = true;
+//#define DISPLAY_SH1106       // Uncomment this line to use the SH1106 display
+//-- SSD1306 is used by default and is most common
 
 // LED Settings
 const int externalLight = LED_BUILTIN; // Set to unused pin, like D1, to disable use of built-in LED (LED_BUILTIN)
+
+// ALARM Settings
+const int ALARM_PIN = 15;
+const int ALARM_DURATION = 10; //Milliseconds
 
 // OTA Updates
 boolean ENABLE_OTA = true;     // this will allow you to load firmware to the device over WiFi (see OTA for ESP8266)
@@ -113,7 +123,7 @@ data_sample_t data_sample; /* all the measured data goes here for logging */
 
 
 
-uint8_t  reslt;
+uint8_t  result;
 uint8_t  data[10]; /* Data buffer for i2c */
 uint8_t  tmp;
 uint8_t  flt[4];      /** @todo CGR change this, its just bytes for eeprom */
@@ -124,5 +134,5 @@ uint16_t humidityraw;
 float    RH;
 uint16_t mincount; // minute counter for VOC baseline houskeeping
 uint8_t  baseline; // 0 if not initialized, 1 when initialized
-uint16_t TVOC;     //
-uint16_t CO2eq;    //
+uint16_t TVOC;     
+uint16_t CO2eq;    
