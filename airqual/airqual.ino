@@ -90,8 +90,8 @@ SOFTWARE.
 OLEDDisplayUi   ui( &display );
 
 /* Alarm data */
-uint16_t alarm_low    = 10; /* 10 uG/m^3 default */
-uint16_t alarm_high   = 100;
+float alarm_low    = 10; /* 10 uG/m^3 default */
+float alarm_high   = 100;
 bool     alarm_enable = false;
 
 /* create the logger */
@@ -1400,7 +1400,7 @@ void writeSettings() {
     f.println("CityID=" + String(CityIDs[0]));
     f.println("isMetric=" + String(IS_METRIC));
     f.println("language=" + String(WeatherLanguage));
-    f.println("himcalarm" + String(alarm_high));
+    f.println("himcalarm=" + String(alarm_high));
     f.println("lomcalarm=" + String(alarm_low));
   }
   f.close();
@@ -1422,12 +1422,12 @@ void readSettings() {
         if (line.indexOf("himcalarm=") >= 0) {
             alarm_high =
                 line.substring(line.lastIndexOf("himcalarm=") + 10).toFloat();
-            Serial.println("himcalarm=" + String(UtcOffset));
+            Serial.println("himcalarm=" + String(alarm_high));
         }
         if (line.indexOf("lomcalarm=") >= 0) {
             alarm_low =
                 line.substring(line.lastIndexOf("lomcalarm=") + 10).toFloat();
-            Serial.println("lomcalarm=" + String(UtcOffset));
+            Serial.println("lomcalarm=" + String(alarm_low));
         }
 
         if (line.indexOf("UtcOffset=") >= 0) {
