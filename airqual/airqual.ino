@@ -136,6 +136,7 @@ ESP8266HTTPUpdateServer serverUpdater;
 
 String WEB_ACTIONS =  "<a class='w3-bar-item w3-button' href='/'><i class='fa fa-home'></i> Home</a>"
                       "<a class='w3-bar-item w3-button' href='/index.html'><i class='fa fa-area-chart'></i> Real Time</a>"
+                      "<a class='w3-bar-item w3-button' href='/clean' onclick='return confirm(\"Do you want clean the particle counter?\")'><i class='fa fa-bath'></i> Run Cleaning Cycle</a>"
                       "<a class='w3-bar-item w3-button' href='/daily.html'><i class='fa fa-line-chart'></i> Daily</a>"
                       "<a class='w3-bar-item w3-button' href='/week.html'><i class='fa fa-calendar-o'></i> Last Week</a>"                      
                       "<a class='w3-bar-item w3-button' href='/year.html'><i class='fa fa-birthday-cake'></i> Last Year</a>"                      
@@ -344,6 +345,7 @@ void setup() {
 
     if (WEBSERVER_ENABLED) {
         server.on("/", display_air_quality);
+        server.on("/clean", handleClean);
         server.on("/systemreset", handleSystemReset);
         server.on("/forgetwifi", handleWifiReset);
         server.on("/updateconfig", handleUpdateConfig);
@@ -766,6 +768,15 @@ boolean authentication() {
         return server.authenticate(www_username, www_password);
     }
     return true; // Authentication not required
+}
+
+
+void handleClean() {
+    if (!authentication()) { return server.requestAuthentication(); }
+    /* run manual cleaning cycle here */
+    sps30_start_manual_fan_cleaning();
+    Serial.println("Started cleaning cycle");
+    redirectHome();
 }
 
 void handleSystemReset() {
