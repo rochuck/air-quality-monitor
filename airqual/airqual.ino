@@ -136,10 +136,10 @@ ESP8266HTTPUpdateServer serverUpdater;
 
 String WEB_ACTIONS =  "<a class='w3-bar-item w3-button' href='/'><i class='fa fa-home'></i> Home</a>"
                       "<a class='w3-bar-item w3-button' href='/index.html'><i class='fa fa-area-chart'></i> Real Time</a>"
-                      "<a class='w3-bar-item w3-button' href='/clean' onclick='return confirm(\"Do you want clean the particle counter?\")'><i class='fa fa-bath'></i> Run Cleaning Cycle</a>"
                       "<a class='w3-bar-item w3-button' href='/daily.html'><i class='fa fa-line-chart'></i> Daily</a>"
                       "<a class='w3-bar-item w3-button' href='/week.html'><i class='fa fa-calendar-o'></i> Last Week</a>"                      
                       "<a class='w3-bar-item w3-button' href='/year.html'><i class='fa fa-birthday-cake'></i> Last Year</a>"                      
+                      "<a class='w3-bar-item w3-button' href='/clean' onclick='return confirm(\"Do you want clean the particle counter?\")'><i class='fa fa-shower'></i> Run Cleaning Cycle</a>"
                       "<a class='w3-bar-item w3-button' href='/configure'><i class='fa fa-cog'></i> Configure</a>"
                       "<a class='w3-bar-item w3-button' href='/configureweather'><i class='fa fa-cloud'></i> Weather</a>"
                       "<a class='w3-bar-item w3-button' href='/systemreset' onclick='return confirm(\"Do you want to reset to default settings?\")'><i class='fa fa-undo'></i> Reset Settings</a>"
