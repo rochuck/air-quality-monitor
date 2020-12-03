@@ -1382,54 +1382,50 @@ String getTempSymbol(boolean forHTML) {
 }
 
 String getSpeedSymbol() {
-  String rtnValue = "mph";
-  if (IS_METRIC) {
-    rtnValue = "kph";
-  }
-  return rtnValue;
+    String rtnValue = "mph";
+    if (IS_METRIC) { rtnValue = "kph"; }
+    return rtnValue;
 }
 
 String zeroPad(int value) {
-  String rtnValue = String(value);
-  if (value < 10) {
-    rtnValue = "0" + rtnValue;
-  }
-  return rtnValue;
+    String rtnValue = String(value);
+    if (value < 10) { rtnValue = "0" + rtnValue; }
+    return rtnValue;
 }
 
-void drawHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state) {
-  display->setColor(WHITE);
-  display->setFont(ArialMT_Plain_16);
-  String displayTime = timeClient.getAmPmHours() + ":" + timeClient.getMinutes();
-  if (IS_24HOUR) {
-    displayTime = timeClient.getHours() + ":" + timeClient.getMinutes();
-  }
-  display->setTextAlignment(TEXT_ALIGN_LEFT);
-  display->drawString(0, 48, displayTime);
+void drawHeaderOverlay(OLEDDisplay* display, OLEDDisplayUiState* state) {
+    display->setColor(WHITE);
+    display->setFont(ArialMT_Plain_16);
+    String displayTime =
+        timeClient.getAmPmHours() + ":" + timeClient.getMinutes();
+    if (IS_24HOUR) {
+        displayTime = timeClient.getHours() + ":" + timeClient.getMinutes();
+    }
+    display->setTextAlignment(TEXT_ALIGN_LEFT);
+    display->drawString(0, 48, displayTime);
 
-  if (!IS_24HOUR) {
-    String ampm = timeClient.getAmPm();
-    display->setFont(ArialMT_Plain_10);
-    display->drawString(39, 54, ampm);
-  }
+    if (!IS_24HOUR) {
+        String ampm = timeClient.getAmPm();
+        display->setFont(ArialMT_Plain_10);
+        display->drawString(39, 54, ampm);
+    }
 
-  display->setFont(ArialMT_Plain_16);
-  display->setTextAlignment(TEXT_ALIGN_LEFT);
+    display->setFont(ArialMT_Plain_16);
+    display->setTextAlignment(TEXT_ALIGN_LEFT);
 
-  /* CGR Put battery percentage here !!!! */
-  String percent = String(50) + "%";
-  display->drawString(64, 48, percent);
+    String percent = String(battery_level()) + "%";
+    display->drawString(64, 48, percent);
 
-  // Draw indicator to show next update
-  int updatePos = (50.0 / float(100)) * 128;
-  display->drawRect(0, 44, 128, 2);
-  /*
-  display->drawHorizontalLine(0, 42, updatePos);
-  display->drawHorizontalLine(0, 43, updatePos);
-  display->drawHorizontalLine(0, 44, updatePos);
-  display->drawHorizontalLine(0, 45, updatePos);
-  */
-  drawRssi(display);
+    // Draw indicator to show next update
+    int updatePos = (50.0 / float(100)) * 128;
+    display->drawRect(0, 44, 128, 2);
+    /*
+    display->drawHorizontalLine(0, 42, updatePos);
+    display->drawHorizontalLine(0, 43, updatePos);
+    display->drawHorizontalLine(0, 44, updatePos);
+    display->drawHorizontalLine(0, 45, updatePos);
+    */
+    drawRssi(display);
 }
 
 void drawRssi(OLEDDisplay* display) {
@@ -1640,11 +1636,65 @@ bool loadFromSpiffs(String path){
   return true;
 }
 
+float get_voltage(){
+    return (float) analogRead(A0) / 57.8; /* this divisor is a bit empirical */
+}
+
+typedef struct {
+    float voltage;
+    float pct;
+} bat_table_t;
+static bat_table_t vlkup[] = {{4.5, 100},
+                              {4.2, 100},
+                              {4.1, 92},
+                              {4.0, 78},
+                              {3.9, 61},
+                              {3.8, 43},
+                              {3.7, 14},
+                              {3.6, 3},
+                              {3.5, 1},
+                              {3.4, 0},
+                              {0, 0},
+                              {-1000, 0}};
+
+/****************************************************************************************
+ * based on the "1A" table found at https://lygte-info.dk/info/BatteryChargePercent%20UK.html
+ */
+uint8_t
+battery_level(void)
+{
+    float vl;
+    float vh;
+    float vint;
+    float pl;
+    float ph;
+    float finalpct;
+    float   voltage = get_voltage() / 2; // voltage per cell
+    uint8_t idx     = 0;
+
+    /* get the right range in the lookup table */
+    while (voltage < vlkup[idx].voltage) { idx++; }
+    vl = vlkup[idx].voltage;
+    vh = vlkup[idx-1].voltage;
+    pl = vlkup[idx].pct;
+    ph = vlkup[idx-1].pct;
+
+    /* now interpolate between these ranges */
+    vh -= vl;
+    voltage -= vl;
+    if (vh > 0.0){
+        vint = voltage/vh;
+    } else {
+        vint = 0.0;
+    }
+    finalpct = (ph-pl)*vint+pl;
+    return (int)finalpct;
+}
+
 void handle_quality() {
 
     /* pass along the battery voltage */
-    float volts =
-        (float) analogRead(A0) / 57.8; /* this divisor is a bit empirical */
+    float volts = get_voltage();
     struct sps30_measurement* m = &data_sample.m;
 
     String quality = String(m->mc_1p0) + "," + String(m->mc_2p5 - m->mc_1p0) +
