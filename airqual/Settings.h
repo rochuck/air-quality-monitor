@@ -121,7 +121,8 @@ typedef struct {
 
 data_sample_t data_sample; /* all the measured data goes here for logging */
 
-
+const int samples = 5; /* should be odd */
+struct sps30_measurement rolling[samples];
 
 uint8_t  result;
 uint8_t  data[10]; /* Data buffer for i2c */

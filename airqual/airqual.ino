@@ -490,6 +490,8 @@ void loop() {
 
         // sps30 particle   iic 0x69, shtc1 rh,t iic 0x70 (RH and T on svm30voc
         // board), sgp30 VOC sensor  iic 0x58 (VOC on svm30voc board)
+#if 0
+rolling average code
 
         do {
             ret = sps30_read_data_ready(&data_ready);
@@ -503,12 +505,74 @@ void loop() {
             delay(100); /* retry in 100ms */
         } while (1);
 
-        ret = sps30_read_measurement(&data_sample.m);
+
+        // rotate samples
+        for (int i = samples - i; i > 0; i --){
+            rolling[i] = rolling[i-1];
+        }
+        ret = sps30_read_measurement(&rolling[0]);
+
         if (ret < 0) {
             Serial.print("error reading measurement\n");
             delay(1000);
         } else {
+            /* now build the rolling average */
             struct sps30_measurement *m =&data_sample.m;
+            memset(m,0,sizeof (*m));
+            for (int i = 0; i < samples; i ++){
+                m->mc_10p0 += rolling[i].mc_10p0/samples;
+                m->mc_4p0 += rolling[i].mc_4p0/samples;
+                m->mc_2p5 += rolling[i].mc_2p5/samples;
+                m->mc_1p0 += rolling[i].mc_1p0/samples;
+                m->nc_10p0 += rolling[i].nc_10p0/samples;
+                m->nc_4p0 += rolling[i].nc_4p0/samples;
+                m->nc_2p5 += rolling[i].nc_2p5/samples;
+                m->nc_1p0 += rolling[i].nc_1p0/samples;
+                m->nc_0p5 += rolling[i].nc_0p5/samples;
+                m->typical_particle_size += rolling[i].typical_particle_size/samples;
+            }
+#endif
+        /* take three readings */
+        for (int i = 0; i < samples; i++) {
+            do {
+                ret = sps30_read_data_ready(&data_ready);
+                if (ret < 0) {
+                    Serial.print("error reading data-ready flag: ");
+                    Serial.println(ret);
+                } else if (!data_ready)
+                    Serial.print(
+                        "data not ready, no new measurement available\n");
+                else
+                    break;
+                delay(100); /* retry in 100ms */
+            } while (1);
+            ret = sps30_read_measurement(&rolling[i]);
+            if (ret < 0) {
+                Serial.print("error reading measurement\n");
+                delay(1000);
+            }
+            delay(500);            
+        }
+
+        { 
+            struct sps30_measurement *p[samples];
+            struct sps30_measurement *temp;
+            struct sps30_measurement *m =&data_sample.m;
+            /* now pick the middle value of the three with a shitty bubble sort */
+            /* should really fix the magic numbers in here */
+            for (int i = 0; i < samples; i++) { p[i] = &rolling[i]; }
+            for (int j = 0; j < samples - 2; j++) {
+                for (int i = 0; i < samples - 1; i++) {
+                    if (p[i]->mc_1p0 > p[i + 1]->mc_1p0) {
+                        temp     = p[i];
+                        p[i]     = p[i + 1];
+                        p[i + 1] = temp;
+                    }
+                }
+            }
+
+            *m = *p[samples / 2 + 1];
+
             Serial.print("pm1.0 ug/m^3= ");
             Serial.println(m->mc_1p0);
             Serial.print("pm2.5 ug/m^3= ");
